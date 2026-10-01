@@ -1,0 +1,1 @@
+"""Craft OpenAPI HTTP wrapper."""

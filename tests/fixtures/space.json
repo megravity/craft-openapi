@@ -1,0 +1,279 @@
+{
+  "GET /blocks": {
+    "id": "0",
+    "type": "page",
+    "textStyle": "page",
+    "markdown": "<page>Document Title</page>",
+    "content": [
+      {
+        "id": "1",
+        "type": "text",
+        "textStyle": "h1",
+        "markdown": "# Main Section"
+      },
+      {
+        "id": "2",
+        "type": "text",
+        "markdown": "This is some content in the document."
+      },
+      {
+        "id": "3",
+        "type": "page",
+        "textStyle": "card",
+        "markdown": "Subsection",
+        "content": [
+          {
+            "id": "4",
+            "type": "text",
+            "markdown": "Nested content inside subsection."
+          }
+        ]
+      }
+    ]
+  },
+  "POST /blocks": {
+    "items": [
+      {
+        "id": "15",
+        "type": "text",
+        "textStyle": "body",
+        "markdown": "## Second Level Header\n\n- **List Item A**: Description text\n- **List Item B**: Description text"
+      },
+      {
+        "id": "16",
+        "type": "image",
+        "url": "https://res.luki.io/user/full/space-id/doc/doc-id/uuid",
+        "altText": "Alt text for accessibility",
+        "markdown": "![Image](https://res.luki.io/user/full/space-id/doc/doc-id/uuid)"
+      }
+    ]
+  },
+  "PUT /blocks": {
+    "items": [
+      {
+        "id": "5",
+        "type": "text",
+        "textStyle": "body",
+        "markdown": "## Updated Section Title\n\nThis content has been updated with new information.",
+        "font": "serif"
+      },
+      {
+        "id": "8",
+        "type": "text",
+        "textStyle": "h2",
+        "markdown": "# New Heading"
+      }
+    ]
+  },
+  "GET /collections/{collectionId}/items": {
+    "items": [
+      {
+        "id": "item1",
+        "title": "Task 1",
+        "properties": {
+          "status": "In Progress",
+          "priority": "High",
+          "assignee": "John Doe"
+        },
+        "content": [
+          {
+            "id": "1",
+            "type": "text",
+            "markdown": "Detailed description of the task."
+          }
+        ]
+      },
+      {
+        "id": "item2",
+        "title": "Task 2",
+        "properties": {
+          "status": "Done",
+          "priority": "Low",
+          "assignee": "Jane Smith"
+        }
+      }
+    ]
+  },
+  "POST /collections/{collectionId}/items": {
+    "items": [
+      {
+        "id": "item3",
+        "title": "New Task",
+        "properties": {
+          "status": "Todo",
+          "priority": "Medium"
+        }
+      }
+    ]
+  },
+  "PUT /collections/{collectionId}/items": {
+    "items": [
+      {
+        "id": "item1",
+        "title": "Updated Task",
+        "properties": {
+          "status": "Done",
+          "priority": "High"
+        }
+      }
+    ]
+  },
+  "GET /collections": {
+    "items": [
+      {
+        "id": "col1",
+        "name": "Tasks",
+        "itemCount": 5,
+        "documentId": "doc1"
+      },
+      {
+        "id": "col2",
+        "name": "Notes",
+        "itemCount": 3,
+        "documentId": "doc2"
+      }
+    ]
+  },
+  "GET /collections/{collectionId}/schema": {
+    "key": "tasks",
+    "name": "Tasks",
+    "contentPropDetails": {
+      "key": "title",
+      "name": "Title"
+    },
+    "properties": [
+      {
+        "key": "status",
+        "name": "Status",
+        "type": "select",
+        "options": [
+          "Not Started",
+          "In Progress",
+          "Completed"
+        ]
+      },
+      {
+        "key": "priority",
+        "name": "Priority",
+        "type": "select",
+        "options": [
+          "Low",
+          "Medium",
+          "High"
+        ]
+      },
+      {
+        "key": "dueDate",
+        "name": "Due Date",
+        "type": "date"
+      }
+    ],
+    "propertyDetails": [
+      {
+        "key": "status",
+        "name": "Status",
+        "type": "select",
+        "options": [
+          "Not Started",
+          "In Progress",
+          "Completed"
+        ]
+      },
+      {
+        "key": "priority",
+        "name": "Priority",
+        "type": "select",
+        "options": [
+          "Low",
+          "Medium",
+          "High"
+        ]
+      },
+      {
+        "key": "dueDate",
+        "name": "Due Date",
+        "type": "date"
+      }
+    ]
+  },
+  "GET /documents": {
+    "items": [
+      {
+        "id": "doc-123",
+        "title": "Meeting Notes"
+      },
+      {
+        "id": "doc-456",
+        "title": "Project Ideas"
+      }
+    ]
+  },
+  "POST /documents": {
+    "items": [
+      {
+        "id": "doc-new-1",
+        "title": "New Document 1",
+        "clickableLink": "craftdocs://open?spaceId=space-uuid&documentId=doc-uuid-1"
+      },
+      {
+        "id": "doc-new-2",
+        "title": "New Document 2",
+        "clickableLink": "craftdocs://open?spaceId=space-uuid&documentId=doc-uuid-2"
+      }
+    ]
+  },
+  "GET /folders": {
+    "items": [
+      {
+        "id": "unsorted",
+        "name": "Unsorted",
+        "documentCount": 42,
+        "folders": []
+      },
+      {
+        "id": "trash",
+        "name": "Recently Deleted",
+        "documentCount": 3,
+        "folders": []
+      },
+      {
+        "id": "templates",
+        "name": "Templates",
+        "documentCount": 5,
+        "folders": []
+      },
+      {
+        "id": "abc123",
+        "name": "Projects",
+        "documentCount": 10,
+        "folders": [
+          {
+            "id": "def456",
+            "name": "Work",
+            "documentCount": 5,
+            "folders": []
+          }
+        ]
+      }
+    ]
+  },
+  "GET /documents/search": {
+    "items": [
+      {
+        "documentId": "doc-123",
+        "markdown": "The **API** endpoints are documented...",
+        "blockIds": [
+          "block-abc-123",
+          "block-def-456"
+        ]
+      },
+      {
+        "documentId": "doc-456",
+        "markdown": "**API** authentication requires...",
+        "blockIds": [
+          "block-ghi-789"
+        ]
+      }
+    ]
+  }
+}

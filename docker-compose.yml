@@ -1,0 +1,21 @@
+services:
+  craft-wrapper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - CRAFT_SPACE_BASE_URL=${CRAFT_SPACE_BASE_URL:?Set the Craft Space connection URL}
+      - WRAPPER_API_TOKEN=${WRAPPER_API_TOKEN:?Set an independent wrapper bearer token}
+      - CRAFT_TIMEOUT_SECONDS=${CRAFT_TIMEOUT_SECONDS:-30}
+      - CRAFT_CONNECT_TIMEOUT_SECONDS=${CRAFT_CONNECT_TIMEOUT_SECONDS:-5}
+      # Unset optional settings are omitted rather than passed as empty strings.
+      - WRAPPER_ENABLED_OPERATIONS
+      - WRAPPER_PUBLIC_URL
+    networks:
+      - tools
+
+networks:
+  tools:
+    external: true
+    name: ${WRAPPER_NETWORK:?Set an existing Docker network shared with the tool client}

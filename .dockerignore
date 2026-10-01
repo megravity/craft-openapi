@@ -1,0 +1,8 @@
+# Allowlist the build context: .env, local caches, docs, and attachments never enter the image.
+*
+!pyproject.toml
+!uv.lock
+!src/
+!src/**
+**/__pycache__/
+**/*.pyc
