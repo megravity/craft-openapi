@@ -3,9 +3,24 @@
 > [!CAUTION]
 > This repo is purely vibe-coded. If you somehow find it, use at your own risk.
 
-A small FastAPI service exposing 13 selected Craft **Space** operations as a generated OpenAPI 3.1 HTTP API. It is suitable for Open WebUI tool servers and other OpenAPI consumers.
+A small FastAPI service exposing 13 selected [Craft](https://www.craft.do/) **Space** operations as a generated OpenAPI 3.1 HTTP API. It is suitable for Open WebUI tool servers and other OpenAPI consumers.
 
 Every data request shares one server-configured Craft connection. The wrapper has its own bearer token. The Craft client does not depend on FastAPI or Open WebUI.
+
+## Contents
+
+- [Installation](#installation): [Python](#python--local-development), [Docker Compose](#docker-compose), [Portainer](#portainer-with-a-cloned-repository-and-local-image), [Docker image](#docker-image-without-compose)
+- [Updating](#updating)
+- [Versioning](#versioning)
+- [Configuration](#configuration)
+- [Operations](#operations)
+- [Errors and write outcomes](#errors-and-write-outcomes)
+- [Open WebUI](#open-webui): [Python tool](#workspace-python-tool), [OpenAPI server](#openapi-tool-server)
+- [Tests and checks](#tests-and-checks)
+- [Architecture](#architecture)
+- [Roadmap](#roadmap)
+
+---
 
 ## Installation
 
@@ -137,6 +152,8 @@ Without the webhook, open the stack in Portainer, copy any changes from `docker-
 
 For a standalone `docker run` container, rebuild with the script, stop the old container, and run the replacement with the same environment and port/network settings.
 
+---
+
 ## Versioning
 
 This iteration is **0.2.0**. Releases use Git tags such as `v0.2.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` URL identifies the HTTP contract independently of the project release number.
@@ -148,6 +165,8 @@ docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontaine
 ```
 
 For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and tool metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
+
+---
 
 ## Configuration
 
@@ -177,6 +196,8 @@ WRAPPER_ENABLED_OPERATIONS=craft_space_list_documents,craft_space_get_block,craf
 ```
 
 Selection takes effect at startup. Recreate the Docker container after changing its environment, or restart the Python process. Disabled operations are absent from both routing and OpenAPI and return `404`, including when another enabled method shares the same path. This is a deployment-level allowlist, not per-user authorization. Anyone with the wrapper token shares its configured Space access.
+
+---
 
 ## Operations
 
@@ -214,6 +235,8 @@ Collection reads allow dynamic JSON property values. Untitled rows can omit `tit
 
 Schema option lists accept the documented string labels and observed `{name,color?}` objects, preserving the supplied representation. Title-property metadata (`contentPropDetails`) is optional because Craft may omit it. Property type strings such as the documented `select` and observed `singleSelect` are preserved without normalization. Single-select item values can be strings; multi-select values can be arrays. Both read shapes are preserved, while array writes remain unsupported. Existing row values are not a substitute for a schema: they do not reveal unused options or the full property contract.
 
+---
+
 ## Errors and write outcomes
 
 Every error has an `error` object containing `code`, `message`, `requestId`, and optional `upstreamStatus`, `upstreamCode`, `retryAfterSeconds`, `outcomeUnknown`, or validation `details:[{field,message}]`. `X-Request-Id` matches the envelope.
@@ -237,6 +260,8 @@ There are **no automatic retries** on any operation. Craft budgets are shared ac
 Distinguish a `502` with an upstream failure and retry guidance from an unexpected response shape after a successful Craft response. A schema parsing mismatch is deterministic until the model or upstream shape changes; backoff does not repair it. For transient reads, callers can honor `retryAfterSeconds` before retrying. The wrapper does not assume every upstream `502` is throttling or convert it into `429`.
 
 A write failure after submission can leave its outcome uncertain, including malformed success responses. Such errors set `outcomeUnknown=true`. Inspect the target before retrying; the wrapper provides neither transactions nor rollback. Conservatively, upstream write rejection responses also carry this flag because the docs provide no atomicity guarantee.
+
+---
 
 ## Open WebUI
 
@@ -284,6 +309,8 @@ Use an address reachable from the Open WebUI backend. When both services are con
 
 Open WebUI can import the OpenAPI 3.x schema and call ordinary HTTP operations. Tool results are complete responses, and this wrapper does not depend on streaming or interactive confirmation events. See [tool-server support](https://docs.openwebui.com/features/extensibility/plugin/tools/openapi-servers/) and [backend vs. browser integration](https://docs.openwebui.com/features/extensibility/plugin/tools/openapi-servers/open-webui/). The running Open WebUI installation still needs its own integration smoke check; the test suite does not claim to have verified its UI or model.
 
+---
+
 ## Tests and checks
 
 ```sh
@@ -301,6 +328,8 @@ Response fixtures are extracted from the **first response example** for implemen
 
 Live Craft validation is separate from automated tests. Read-only probes reproduced schema option objects, missing title metadata, and calendar-date string values. A separate write probe verified an existing collection row's Date update, read it back, restored the original value, and confirmed all properties matched their original values. Regression cases use generic synthetic values, not captured personal schemas. Secret-link-only authentication worked for these requests. No additional Craft auth headers or OAuth flow were documented or implemented, and select writes were not live-tested.
 
+---
+
 ## Architecture
 
 `api/` owns HTTP models, validation, auth, error translation, and tool descriptions. `craft/transport.py` owns bounded asynchronous HTTP, decoding, deadlines, and sanitized failures. `craft/space/client.py` owns upstream query/body names, typed parsing, and singleton adaptation. `config.py` owns environment settings and operation selection.
@@ -317,6 +346,8 @@ All three local docs were compared before design. Space has 44 documented method
 Reuse transport/errors and proven common models across future adapters; extract further helpers only when a second adapter proves matching contracts. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
 
 V1 deliberately excludes deletion/movement, folder writes, collection creation/schema mutation/views, tasks, comments, reminders, uploads, and whiteboards. Other documented gaps remain explicit: examples use inconsistent identifier terminology and collection-type representations; array query serialization and regex claims are ambiguous; list pagination and mutation atomicity are unspecified. The wrapper follows documented example field names, accepts single-value filters, preserves read type strings, and omits those uncertain capabilities.
+
+---
 
 ## Roadmap
 
