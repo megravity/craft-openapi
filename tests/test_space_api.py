@@ -49,6 +49,124 @@ def test_live_schema_shape_and_select_value_cardinality(settings):
     assert len(calls) == 2
 
 
+@pytest.mark.parametrize(
+    "depth,payload",
+    [
+        (
+            0,
+            {
+                "id": "root",
+                "type": "text",
+                "markdown": "# Example page",
+                "contentPreviewMd": "Nested content preview",
+            },
+        ),
+        (
+            0,
+            {
+                "id": "root",
+                "type": "collection",
+                "markdown": "Example collection",
+                "itemsPreviewMd": "Collection rows preview",
+            },
+        ),
+        (
+            -1,
+            {
+                "id": "root",
+                "type": "text",
+                "content": [
+                    {
+                        "id": "collection",
+                        "type": "collection",
+                        "items": [
+                            {
+                                "id": "row",
+                                "type": "collectionItem",
+                                "title": "Example row",
+                                "markdown": "Example row Markdown",
+                                "properties": {"status": "Yes", "tags": ["A"], "number": 2.5},
+                                "content": [
+                                    {"id": "row-text", "type": "text", "markdown": "Row content"}
+                                ],
+                            },
+                            {"id": "untitled-row", "properties": {}},
+                        ],
+                    }
+                ],
+            },
+        ),
+    ],
+)
+def test_structured_reads_preserve_collection_rows_and_previews(settings, depth, payload):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        assert request.url.path == "/links/testing-link-secret/api/v1/blocks"
+        assert dict(request.url.params) == {"id": "root", "maxDepth": str(depth)}
+        assert request.headers["Accept"] == "application/json"
+        return httpx.Response(200, json=payload)
+
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        response = client.get(PREFIX + f"/blocks/root?maxDepth={depth}", headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("endpoint", ["/documents", "/documents/search"])
+@pytest.mark.parametrize(
+    "bounds", [{"dailyNoteDateGte": "yesterday"}, {"dailyNoteDateLte": "today"}]
+)
+def test_daily_note_bounds_forwarded_with_endpoint_specific_scope(settings, endpoint, bounds):
+    calls = []
+    listing = endpoint == "/documents"
+    params = {**bounds, **({"location": "daily_notes"} if listing else {"query": "e"})}
+
+    def handler(request):
+        calls.append(request)
+        expected = {
+            **bounds,
+            **(
+                {"location": "daily_notes", "fetchMetadata": "false"}
+                if listing
+                else {"include": "e", "fetchBlocks": "false"}
+            ),
+        }
+        assert dict(request.url.params) == expected
+        return httpx.Response(200, json={"items": []})
+
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        response = client.get(PREFIX + endpoint, params=params, headers=AUTH)
+    assert response.status_code == 200
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "scope", [None, "folderId=folder", "location=unsorted", "location=trash", "location=templates"]
+)
+@pytest.mark.parametrize("bound", ["dailyNoteDateGte", "dailyNoteDateLte"])
+def test_listing_daily_note_bounds_reject_incompatible_scopes(settings, scope, bound):
+    def handler(request):
+        pytest.fail("Invalid daily-note scope must not reach Craft")
+
+    query = f"{bound}=today" + (f"&{scope}" if scope else "")
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        response = client.get(PREFIX + "/documents?" + query, headers=AUTH)
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "validation_error"
+    assert any("require location=daily_notes" in d["message"] for d in error["details"])
+
+
 # Independent public/upstream contracts: no implementation metadata drives these cases.
 CASES = [
     ("GET", "/folders", None, "GET /folders", {}, None, 200),
@@ -280,6 +398,70 @@ def test_health_schema_and_docs_no_upstream(settings):
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/openapi.json").status_code == 200
         assert client.get("/docs").status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/collections/example/items", "/blocks/example?maxDepth=-1"])
+def test_collection_date_strings_preserved_in_item_and_block_reads(settings, path):
+    row = {
+        "id": "example-row",
+        "type": "collectionItem",
+        "title": "Example row",
+        "properties": {"due": "2025-01-15"},
+    }
+    payload = (
+        {"items": [row]}
+        if path.startswith("/collections/")
+        else {"id": "example", "type": "collection", "items": [row]}
+    )
+
+    def handler(request):
+        assert request.method == "GET"
+        return httpx.Response(200, json=payload)
+
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        response = client.get(PREFIX + path, headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_collection_date_update_and_restore_round_trip(settings):
+    properties = {"due": "2025-01-15", "status": "Done"}
+    expected_dates = iter(["2025-01-16", "2025-01-15"])
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        assert request.url.path.endswith("/collections/example/items")
+        if request.method == "PUT":
+            target_date = next(expected_dates)
+            assert json.loads(request.content) == {
+                "itemsToUpdate": [{"id": "example-row", "properties": {"due": target_date}}]
+            }
+            properties["due"] = target_date
+        else:
+            assert request.method == "GET"
+            assert dict(request.url.params) == {"maxDepth": "0"}
+        return httpx.Response(
+            200, json={"items": [{"id": "example-row", "properties": properties}]}
+        )
+
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        path = PREFIX + "/collections/example/items"
+        for target_date in ("2025-01-16", "2025-01-15"):
+            response = client.patch(
+                path + "/example-row", headers=AUTH, json={"properties": {"due": target_date}}
+            )
+            assert response.status_code == 200
+            expected = {"id": "example-row", "properties": {"due": target_date, "status": "Done"}}
+            assert response.json() == expected
+            response = client.get(path, headers=AUTH)
+            assert response.status_code == 200
+            assert response.json() == {"items": [expected]}
+    assert calls == ["PUT", "GET", "PUT", "GET"]
 
 
 def test_dynamic_collection_values_and_sparse_update(settings):

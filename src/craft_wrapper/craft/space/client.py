@@ -5,9 +5,8 @@ from urllib.parse import quote
 from pydantic import BaseModel, ValidationError
 
 from craft_wrapper.craft.errors import CraftError
-from craft_wrapper.craft.models import Block, Items
+from craft_wrapper.craft.models import Block, CollectionItem, Items
 from craft_wrapper.craft.space.models import (
-    CollectionItem,
     CollectionSchema,
     CollectionSummary,
     DocumentSearchHit,

@@ -18,10 +18,9 @@ from craft_wrapper.api.schemas import (
     UpdateCollectionProperties,
     UpdateMarkdown,
 )
-from craft_wrapper.craft.models import Block, Items
+from craft_wrapper.craft.models import Block, CollectionItem, Items
 from craft_wrapper.craft.space.client import SpaceClient
 from craft_wrapper.craft.space.models import (
-    CollectionItem,
     CollectionSchema,
     CollectionSummary,
     DocumentSearchHit,
@@ -82,8 +81,11 @@ def make_router() -> APIRouter:
         response_model_exclude_none=True,
         summary="List document IDs and titles",
         description="Discover documents before reading their root blocks. A document ID is "
-        "its root block ID. Choose location OR folderId; folders include "
-        "subfolders. With no scope filter this returns all documents and may "
+        "its root block ID. Choose location OR folderId; folderId lists only "
+        "direct documents, so list each descendant folder separately when needed. "
+        "Daily-note date bounds require location=daily_notes. "
+        "Ordering is unspecified; sort results client-side. "
+        "With no scope filter this returns all documents and may "
         "be large; list_folders first. This is not content search. No pagination "
         "is documented. Metadata is optional. Use each item's id for API calls; "
         "clickableLink is for navigation and can contain a different documentId.",
@@ -97,10 +99,12 @@ def make_router() -> APIRouter:
         response_model=Items[DocumentSearchHit],
         response_model_exclude_none=True,
         summary="Search content across documents",
-        description="Find content mentions using one plain include string. Returns the top "
-        "20 relevance-ranked results with highlighted snippets, document IDs, "
-        "and matching block IDs; it is not exhaustive and has no pagination. "
-        "Choose at most one of location, folderId, documentId. Use read_markdown "
+        description="Find content mentions using one plain include string. Matches can occur "
+        "inside words, rather than only whole words. Returns relevance-ranked results "
+        "with highlighted snippets, document IDs, and matching block IDs; result counts "
+        "vary and completeness is not guaranteed. No pagination is documented. "
+        "Choose at most one of location, folderId, documentId; folderId includes descendants. "
+        "Daily-note date bounds do not require a location here. Use read_markdown "
         "to read a result's document, or get_block for IDs/hierarchy to edit. "
         "Regex is not exposed in v1.",
     )
@@ -135,7 +139,9 @@ def make_router() -> APIRouter:
         "Use the id from list_documents or documentId from search_documents as blockId; "
         "do not extract an API ID from clickableLink. "
         "Use returned text-block IDs for update_block_markdown. Default depth 1 "
-        "omits deeper descendants; -1 reads all descendants. Prefer "
+        "omits deeper descendants; -1 reads all descendants. Collection rows appear "
+        "under items when returned by Craft; list_collection_items reads rows directly. "
+        "Depth-limited reads preserve contentPreviewMd and itemsPreviewMd when supplied. Prefer "
         "read_markdown for reading and summarization. Craft links are preserved.",
     )
     async def get_block(blockId: Identifier, client: Client, depth: Annotated[BlockDepth, Query()]):

@@ -59,9 +59,12 @@ class DateFilters(InputModel):
 
 
 class DocumentFilters(DateFilters):
-    location: Location | None = None
+    location: Location | None = Field(
+        default=None, description="Required as daily_notes when using dailyNoteDateGte/Lte."
+    )
     folderId: Identifier | None = Field(
-        default=None, description="Includes this folder's subfolders."
+        default=None,
+        description="Lists direct documents only; query descendant folders separately.",
     )
     fetchMetadata: bool = False
 
@@ -69,11 +72,18 @@ class DocumentFilters(DateFilters):
     def exclusive_location(self) -> "DocumentFilters":
         if self.location is not None and self.folderId is not None:
             raise ValueError("Use only one of location or folderId")
+        if (
+            self.dailyNoteDateGte is not None or self.dailyNoteDateLte is not None
+        ) and self.location != "daily_notes":
+            raise ValueError("Daily-note date filters require location=daily_notes")
         return self
 
 
 class SearchFilters(DateFilters):
-    query: NonemptyText = Field(description="One plain content-search include string, not a regex.")
+    query: NonemptyText = Field(
+        description="One plain content-search include string; can match substrings inside words. "
+        "Not a regex."
+    )
     location: Location | None = None
     folderId: Identifier | None = Field(
         default=None, description="Includes this folder's subfolders."

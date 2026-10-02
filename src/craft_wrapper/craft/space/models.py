@@ -1,5 +1,3 @@
-from typing import Any
-
 from pydantic import Field
 
 from craft_wrapper.craft.models import Block, CraftModel
@@ -67,15 +65,3 @@ class CollectionSchema(CraftModel):
         default=None, description="Title-property metadata, when supplied by Craft."
     )
     properties: list[CollectionProperty]
-
-
-class CollectionItem(CraftModel):
-    id: str
-    title: str | None = None
-    properties: dict[str, Any] | None = Field(
-        default=None,
-        description="Dynamic collection values returned by Craft, including nested JSON. "
-        "Single-select values can be strings and multi-select values arrays; "
-        "the wrapper preserves their shape.",
-    )
-    content: list[Block] | None = None

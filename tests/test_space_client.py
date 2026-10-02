@@ -196,3 +196,74 @@ def test_document_api_id_is_independent_from_navigation_link():
     )
     assert documents.items[0].id == "api-root-slug"
     assert documents.items[0].clickableLink == payload["items"][0]["clickableLink"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"items": [{"properties": {}}]},
+        {"items": "wrong"},
+        {"contentPreviewMd": {}},
+        {"itemsPreviewMd": 123},
+        {"items": [{"id": "row", "properties": [], "content": []}]},
+    ],
+)
+def test_malformed_collection_rows_and_previews_fail_without_retries(fields):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"id": "collection", "type": "collection", **fields})
+
+    with pytest.raises(CraftError) as raised:
+        call(handler, lambda c: c.get_block("collection", -1))
+    assert raised.value.code == "craft_upstream_error"
+    assert not raised.value.outcome_unknown
+    assert len(calls) == 1
+
+
+def test_collection_rows_keep_known_fields_and_drop_unknown_fields_recursively():
+    payload = {
+        "id": "collection",
+        "type": "collection",
+        "unmodeled": "ignored",
+        "items": [
+            {
+                "id": "row",
+                "properties": {},
+                "unmodeled": "ignored",
+                "contentPreviewMd": "Row preview",
+                "content": [{"id": "text", "type": "text", "markdown": "Example", "extra": True}],
+            }
+        ],
+    }
+    result = call(
+        lambda request: httpx.Response(200, json=payload),
+        lambda c: c.get_block("collection", -1),
+    )
+    assert result.model_dump(exclude_none=True) == {
+        "id": "collection",
+        "type": "collection",
+        "items": [
+            {
+                "id": "row",
+                "properties": {},
+                "contentPreviewMd": "Row preview",
+                "content": [{"id": "text", "type": "text", "markdown": "Example"}],
+            }
+        ],
+    }
+
+
+def test_search_preserves_more_than_twenty_hits_and_repeated_document_ids():
+    payload = {
+        "items": [
+            {"documentId": "document", "markdown": f"Match {i}", "blockIds": [f"block-{i}"]}
+            for i in range(25)
+        ]
+    }
+    result = call(
+        lambda request: httpx.Response(200, json=payload),
+        lambda c: c.search_documents({"query": "match"}),
+    )
+    assert result.model_dump(exclude_none=True) == payload
