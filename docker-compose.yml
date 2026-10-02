@@ -1,5 +1,6 @@
 services:
   craft-wrapper:
+    container_name: craft-wrapper
     image: craft-openapi-wrapper:local
     build:
       context: .

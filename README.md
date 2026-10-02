@@ -55,7 +55,7 @@ docker compose ps
 docker compose logs --tail=50 craft-wrapper
 ```
 
-`docker-compose.yml` builds from the clone and tags the image `craft-openapi-wrapper:local`. It publishes no host ports. A client on the shared network reaches `http://craft-wrapper:8000`; the schema is `/openapi.json`. Use one service with this name per shared network to avoid DNS alias collisions. Host-browser requests to `localhost:8000` do not reach this deployment.
+`docker-compose.yml` builds from the clone and tags the image `craft-openapi-wrapper:local`. Both Compose files set the container name to `craft-wrapper`, rather than a generated stack/service/instance name. This name must be unique on the Docker host; change it if deploying another instance. It publishes no host ports. A client on the shared network reaches `http://craft-wrapper:8000`; the schema is `/openapi.json`. Use one service with this name per shared network to avoid DNS alias collisions. Host-browser requests to `localhost:8000` do not reach this deployment.
 
 ### Portainer with a cloned repository and local image
 
@@ -71,7 +71,7 @@ In Portainer:
 
 1. Select the same Docker environment where you built the image.
 2. Open **Stacks → Add stack → Web editor**, and paste **`docker-compose.portainer.yml`** from the clone. This file uses the local image with `pull_policy: never`; it contains no build context or host mounts.
-3. Add stack variables `CRAFT_SPACE_BASE_URL`, `WRAPPER_API_TOKEN`, and `WRAPPER_NETWORK`. The network must already exist and also be attached to the tool client. Optionally add timeout settings, `WRAPPER_ENABLED_OPERATIONS`, or `WRAPPER_PUBLIC_URL`; omit unused optional settings entirely.
+3. Add stack variables `CRAFT_SPACE_BASE_URL`, `WRAPPER_API_TOKEN`, and `WRAPPER_NETWORK`. The network must already exist and also be attached to the tool client. Optionally set `WRAPPER_ENABLED_OPERATIONS` to `read_only`, `full`, or an explicit operation-ID list. You can also add timeout settings or `WRAPPER_PUBLIC_URL`; omit unused optional settings entirely.
 4. Keep any **Re-pull image** option disabled and deploy. Check the container's health and logs.
 
 The clone's `.env` is not automatically read by Portainer. Enter variables in Portainer or use its **Load variables from .env file** feature. No credential file is mounted into the container. See [Portainer's stack and environment-variable documentation](https://docs.portainer.io/user/docker/stacks/add).
@@ -124,16 +124,24 @@ Environment variables override `.env`. Startup rejects missing credentials, plac
 | `WRAPPER_API_TOKEN`             | Required independent, nonempty bearer token without whitespace.                                                                                                                       |
 | `CRAFT_TIMEOUT_SECONDS`         | `30`; overall upstream deadline and read/write/pool phase limits.                                                                                                                     |
 | `CRAFT_CONNECT_TIMEOUT_SECONDS` | `5`; upstream connection limit, also bounded by the overall deadline.                                                                                                                 |
-| `WRAPPER_ENABLED_OPERATIONS`    | Omit to enable all 13 v1 operations. Otherwise a comma-separated list of exact operation IDs below. Empty/unknown entries are errors; duplicates are harmless.                        |
+| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all 13 operations. `read_only`: 8 read operations. Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries are errors; duplicates are harmless. |
 | `WRAPPER_PUBLIC_URL`            | Optional non-secret HTTP(S) origin, without a path/query/credentials; sets OpenAPI `servers`. Otherwise consumers use the schema origin.                                              |
 
-For a read-only deployment, for example:
+Use a preset for common configurations:
 
 ```dotenv
-WRAPPER_ENABLED_OPERATIONS=craft_space_list_folders,craft_space_list_documents,craft_space_search_documents,craft_space_get_block,craft_space_read_markdown,craft_space_list_collections,craft_space_get_collection_schema,craft_space_list_collection_items
+WRAPPER_ENABLED_OPERATIONS=read_only
 ```
 
-Selection takes effect at startup. Disabled operations are absent from both routing and OpenAPI and return `404`, including when another enabled method shares the same path. This is a deployment-level allowlist, not per-user authorization. Anyone with the wrapper token shares its configured Space access.
+`read_only` includes folders, documents, content search, structured blocks, Markdown, collections, collection schemas, and collection items. All five write operations are disabled. `full` enables all implemented v1 operations, including writes; it does not enable deferred Craft capabilities.
+
+Preset names are case-insensitive; `Read Only` and `read-only` also work. Set one preset or an explicit list, rather than mixing presets and operation IDs. Explicit operation IDs remain case-sensitive. For a narrower selection:
+
+```dotenv
+WRAPPER_ENABLED_OPERATIONS=craft_space_list_documents,craft_space_get_block,craft_space_read_markdown
+```
+
+Selection takes effect at startup. Recreate the Docker container after changing its environment, or restart the Python process. Disabled operations are absent from both routing and OpenAPI and return `404`, including when another enabled method shares the same path. This is a deployment-level allowlist, not per-user authorization. Anyone with the wrapper token shares its configured Space access.
 
 ## Operations
 
@@ -205,7 +213,10 @@ Open WebUI can import the OpenAPI 3.x schema and call ordinary HTTP operations. 
 uv run --locked pytest -q
 uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
+uvx basedpyright
 ```
+
+`pyproject.toml` sets standard type checking for Pyright and basedpyright, using the project's `.venv` and Python 3.12. The editor and CLI use the same configuration; basedpyright's stricter annotation/style rules are not enabled by this preset. `uvx` runs the checker separately from application dependencies. See [basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/).
 
 All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 13 routes, discovery/editing and collection workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
 
@@ -213,7 +224,7 @@ Response fixtures are extracted from the **first response example** for implemen
 
 Live Craft validation is separate from automated tests. A read-only probe reproduced schema option objects and missing title metadata; regression cases use generic synthetic values, not captured personal schemas. Secret-link-only authentication worked for those reads. No additional Craft auth headers or OAuth flow were documented or implemented, and select writes were not live-tested.
 
-## Architecture and later APIs
+## Architecture
 
 `api/` owns HTTP models, validation, auth, error translation, and tool descriptions. `craft/transport.py` owns bounded asynchronous HTTP, decoding, deadlines, and sanitized failures. `craft/space/client.py` owns upstream query/body names, typed parsing, and singleton adaptation. `config.py` owns environment settings and operation selection.
 
@@ -226,6 +237,26 @@ All three local docs were compared before design. Space has 44 documented method
 - Daily Notes has date defaults/search results and narrower task scopes; Space task `all` is not the union of active/upcoming/inbox/logbook.
 - Views are stored definitions, not executed queries. Reminders have conditional availability/ownership and cursor pagination; neither is exposed in v1.
 
-Later add `craft/documents/` and `craft/daily/`, corresponding API routers, and independent server-side connection settings. Reuse transport/errors and proven common models; extract further helpers only when a second adapter proves matching contracts. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
+Reuse transport/errors and proven common models across future adapters; extract further helpers only when a second adapter proves matching contracts. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
 
 V1 deliberately excludes deletion/movement, folder writes, collection creation/schema mutation/views, tasks, comments, reminders, uploads, and whiteboards. Other documented gaps remain explicit: examples use inconsistent identifier terminology and collection-type representations; array query serialization and regex claims are ambiguous; list pagination and mutation atomicity are unspecified. The wrapper follows documented example field names, accepts single-value filters, preserves read type strings, and omits those uncertain capabilities.
+
+## Roadmap
+
+These additions are planned; their routes and configuration are not implemented yet.
+
+### Multi-Document API
+
+Add a dedicated adapter and route prefix for a configured Multi-Document connection. Preserve selected-document scope, include/exclude filters, and document-specific search targeting. Give it its own connection settings; unavailable access must never fall back to the broader Space connection.
+
+### Daily Notes API
+
+Add a dedicated adapter and route prefix for a configured Daily Notes connection. Preserve date-based targeting, Craft's date defaults, daily-note search results, and the documented task scopes. Use independent connection settings and retain the differences from Space task behavior.
+
+### Permission-based routes for LLM tools
+
+Expose permission-specific tool-server URLs, starting with an explicit read-only entry point, for example `/v1/space/read-only` with its own `/openapi.json`. A tool client could register this URL to discover and call only reads. Add narrower profiles for selected operation groups, such as content editing or collection-item updates, so different tools can receive different permissions on the same deployment.
+
+Each profile must expose only its allowed HTTP routes and generate OpenAPI from those same routes. Enforce the scope on the server and bind credentials to permitted profiles, so a read-only tool cannot gain write access by calling a different URL. The deployment-wide operation allowlist remains an upper bound on every profile.
+
+The existing `WRAPPER_ENABLED_OPERATIONS` presets apply to the entire deployment and use one shared token. They do not yet provide separate permission URLs or credentials per tool. Existing Space paths and operation IDs will remain stable when these scoped entry points are added.

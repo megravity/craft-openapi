@@ -1,6 +1,7 @@
 # Build locally with scripts/build-image.sh, then paste this file into Portainer.
 services:
   craft-wrapper:
+    container_name: craft-wrapper
     image: craft-openapi-wrapper:local
     pull_policy: never
     restart: unless-stopped

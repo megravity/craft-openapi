@@ -19,7 +19,9 @@ def operations(spec):
     ]
 
 
-def test_openapi_valid_and_exact_operation_set(settings):
+@pytest.mark.parametrize("preset", [None, "full"])
+def test_openapi_valid_and_exact_operation_set(settings, preset):
+    settings.wrapper_enabled_operations = preset
     spec = create_app(settings).openapi()
     validate(spec)
     assert spec["openapi"] == "3.1.0"
@@ -44,6 +46,82 @@ def test_openapi_valid_and_exact_operation_set(settings):
     assert schema["AddCollectionItem"]["properties"]["properties"]["additionalProperties"] == {
         "type": "string"
     }
+
+
+READ_ONLY_IDS = {
+    "craft_space_list_folders",
+    "craft_space_list_documents",
+    "craft_space_search_documents",
+    "craft_space_get_block",
+    "craft_space_read_markdown",
+    "craft_space_list_collections",
+    "craft_space_get_collection_schema",
+    "craft_space_list_collection_items",
+}
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (None, OPERATION_IDS),
+        ("full", OPERATION_IDS),
+        ("Full", OPERATION_IDS),
+        (" FULL ", OPERATION_IDS),
+        ("read_only", READ_ONLY_IDS),
+        ("Read Only", READ_ONLY_IDS),
+        ("read-only", READ_ONLY_IDS),
+        (" READ_ONLY ", READ_ONLY_IDS),
+        (
+            "craft_space_list_documents, craft_space_get_block,craft_space_list_documents",
+            {"craft_space_list_documents", "craft_space_get_block"},
+        ),
+    ],
+)
+def test_operation_presets_and_explicit_lists(value, expected):
+    settings = Settings(
+        _env_file=None,
+        craft_space_base_url="https://connect.craft.do/links/private/api/v1",
+        wrapper_api_token="token",
+        wrapper_enabled_operations=value,
+    )
+    assert settings.enabled_operations == expected
+
+
+def test_read_only_preset_removes_all_write_routes_and_schema(settings):
+    settings.wrapper_enabled_operations = "read_only"
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        return httpx.Response(200, json={"items": []})
+
+    app = create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    spec = app.openapi()
+    assert {op["operationId"] for op in operations(spec)} == READ_ONLY_IDS
+    assert all(set(path) == {"get"} for path in spec["paths"].values())
+    validate(spec)
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer test-wrapper-token"}
+        assert client.get("/v1/space/documents", headers=headers).status_code == 200
+        for method, path, body in [
+            ("POST", "/documents", {"title": "Disabled"}),
+            ("POST", "/blocks/page/content", {"markdown": "Disabled"}),
+            ("PATCH", "/blocks/block", {"markdown": "Disabled"}),
+            ("POST", "/collections/collection/items", {"title": "Disabled"}),
+            (
+                "PATCH",
+                "/collections/collection/items/item",
+                {"properties": {"status": "Disabled"}},
+            ),
+        ]:
+            assert (
+                client.request(method, "/v1/space" + path, json=body, headers=headers).status_code
+                == 404
+            )
+        assert client.get("/health").status_code == 200
+        assert client.get("/openapi.json").status_code == 200
+    assert len(calls) == 1
 
 
 def test_allowlist_removes_http_routes_and_schema(settings):
@@ -91,7 +169,19 @@ def test_config_rejects_invalid_craft_urls_without_values(url):
 
 
 @pytest.mark.parametrize(
-    "allowlist", ["", " ", "unknown", "craft_space_list_documents,", ",craft_space_list_documents"]
+    "allowlist",
+    [
+        "",
+        " ",
+        "unknown",
+        "craft_space_list_documents,",
+        ",craft_space_list_documents",
+        "full,craft_space_list_documents",
+        "read_only,craft_space_create_document",
+        "read_only,full",
+        "read_only,",
+        "CRAFT_SPACE_LIST_DOCUMENTS",
+    ],
 )
 def test_invalid_allowlist(allowlist):
     with pytest.raises(ValidationError):
@@ -151,6 +241,32 @@ def test_environment_overrides_dotenv(tmp_path, monkeypatch):
     assert settings.wrapper_api_token.get_secret_value() == "environment-token"
     assert "file-secret" not in repr(settings)
     assert "environment-token" not in repr(settings)
+
+
+def test_load_settings_resolves_required_values_from_sources(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CRAFT_SPACE_BASE_URL", raising=False)
+    monkeypatch.delenv("WRAPPER_API_TOKEN", raising=False)
+    (tmp_path / ".env").write_text(
+        "CRAFT_SPACE_BASE_URL=https://connect.craft.do/links/file-secret/api/v1\n"
+        "WRAPPER_API_TOKEN=file-token\n"
+    )
+    monkeypatch.setenv("WRAPPER_API_TOKEN", "environment-token")
+    settings = load_settings()
+    assert settings.craft_space_base_url.get_secret_value().endswith("/links/file-secret/api/v1")
+    assert settings.wrapper_api_token.get_secret_value() == "environment-token"
+
+
+def test_load_settings_still_requires_credentials(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CRAFT_SPACE_BASE_URL", raising=False)
+    monkeypatch.delenv("WRAPPER_API_TOKEN", raising=False)
+    with pytest.raises(RuntimeError) as raised:
+        load_settings()
+    assert (
+        str(raised.value)
+        == "Invalid wrapper configuration: craft_space_base_url, wrapper_api_token"
+    )
 
 
 def test_startup_failure_is_sanitized(tmp_path, monkeypatch):

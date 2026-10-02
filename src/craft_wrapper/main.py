@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException
 
 from craft_wrapper.api.errors import (
@@ -87,15 +88,19 @@ def create_app(
     )
     app.state.settings = settings
     app.add_middleware(RequestMiddleware)
-    app.add_exception_handler(CraftError, craft_error_handler)
-    app.add_exception_handler(RequestValidationError, validation_error_handler)
-    app.add_exception_handler(HTTPException, http_error_handler)
+    app.exception_handler(CraftError)(craft_error_handler)
+    app.exception_handler(RequestValidationError)(validation_error_handler)
+    app.exception_handler(HTTPException)(http_error_handler)
     router = make_router()
     app.state.disabled_routes = [
-        route for route in router.routes if route.operation_id not in settings.enabled_operations
+        route
+        for route in router.routes
+        if isinstance(route, APIRoute) and route.operation_id not in settings.enabled_operations
     ]
     router.routes[:] = [
-        route for route in router.routes if route.operation_id in settings.enabled_operations
+        route
+        for route in router.routes
+        if not isinstance(route, APIRoute) or route.operation_id in settings.enabled_operations
     ]
     app.include_router(router)
 

@@ -10,7 +10,9 @@ from craft_wrapper.craft.errors import CraftError
 from craft_wrapper.craft.transport import CraftTransport, retry_after_seconds
 
 
-def run_request(handler, *, method="GET", max_bytes=8 * 1024 * 1024, deadline=1, markdown=False):
+def run_request(
+    handler, *, method="GET", max_bytes=8 * 1024 * 1024, deadline: float = 1, markdown=False
+):
     async def run():
         async with httpx.AsyncClient(
             base_url="https://connect.craft.do/links/testing-link-secret/api/v1/",
@@ -215,6 +217,8 @@ def test_retry_after_formats():
     for value in (None, "garbage", "-5", "NaN", "1.5", "１２"):
         assert retry_after_seconds(value) is None
     later = format_datetime(datetime.now(UTC) + timedelta(seconds=60), usegmt=True)
-    assert 59 <= retry_after_seconds(later) <= 60
+    seconds = retry_after_seconds(later)
+    assert seconds is not None
+    assert 59 <= seconds <= 60
     before = format_datetime(datetime.now(UTC) - timedelta(seconds=60), usegmt=True)
     assert retry_after_seconds(before) == 0

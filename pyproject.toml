@@ -24,6 +24,13 @@ packages = ["src/craft_wrapper"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
