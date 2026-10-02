@@ -7,7 +7,11 @@ A small FastAPI service exposing 13 selected Craft **Space** operations as a gen
 
 Every data request shares one server-configured Craft connection. The wrapper has its own bearer token. The Craft client does not depend on FastAPI or Open WebUI.
 
-## Local development
+## Installation
+
+Clone the repository and run the commands below from its root. Choose Python, Docker Compose, or Portainer according to how you want to manage the process. Supply connection secrets and the network name in your deployment configuration.
+
+### Python / local development
 
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). The project defaults to Python 3.12; `uv` can install that interpreter if needed.
 
@@ -38,6 +42,77 @@ curl -H "Authorization: Bearer $WRAPPER_API_TOKEN" \
 curl -H "Authorization: Bearer $WRAPPER_API_TOKEN" \
   'http://127.0.0.1:8000/v1/space/blocks/DOCUMENT_ID/markdown?maxDepth=1'
 ```
+
+### Docker Compose
+
+Requires Docker Engine and the Docker Compose plugin. Copy `.env.example` to `.env` if you have not already done so, replace the two credential placeholders, and set `WRAPPER_NETWORK` to an **existing Docker network also attached to your tool client**. You can find that network in the client's container configuration. Omit unused optional variables instead of setting them to empty strings.
+
+```sh
+cp .env.example .env  # First-time setup only; do not overwrite an existing .env.
+# Edit .env: credentials and WRAPPER_NETWORK=YOUR_SHARED_NETWORK.
+docker compose up --build -d
+docker compose ps
+docker compose logs --tail=50 craft-wrapper
+```
+
+`docker-compose.yml` builds from the clone and tags the image `craft-openapi-wrapper:local`. It publishes no host ports. A client on the shared network reaches `http://craft-wrapper:8000`; the schema is `/openapi.json`. Use one service with this name per shared network to avoid DNS alias collisions. Host-browser requests to `localhost:8000` do not reach this deployment.
+
+### Portainer with a cloned repository and local image
+
+This method targets **Docker Standalone**. Clone the repository on the Docker host managed by Portainer, and build there:
+
+```sh
+./scripts/build-image.sh
+```
+
+The script builds `craft-openapi-wrapper:local` using the repository as its context, even when invoked from another directory. It uses the Docker builder's default platform, so build on the intended host. You can supply a different tag with `./scripts/build-image.sh IMAGE_TAG`; also change the image in the Portainer Compose file if you do.
+
+In Portainer:
+
+1. Select the same Docker environment where you built the image.
+2. Open **Stacks → Add stack → Web editor**, and paste **`docker-compose.portainer.yml`** from the clone. This file uses the local image with `pull_policy: never`; it contains no build context or host mounts.
+3. Add stack variables `CRAFT_SPACE_BASE_URL`, `WRAPPER_API_TOKEN`, and `WRAPPER_NETWORK`. The network must already exist and also be attached to the tool client. Optionally add timeout settings, `WRAPPER_ENABLED_OPERATIONS`, or `WRAPPER_PUBLIC_URL`; omit unused optional settings entirely.
+4. Keep any **Re-pull image** option disabled and deploy. Check the container's health and logs.
+
+The clone's `.env` is not automatically read by Portainer. Enter variables in Portainer or use its **Load variables from .env file** feature. No credential file is mounted into the container. See [Portainer's stack and environment-variable documentation](https://docs.portainer.io/user/docker/stacks/add).
+
+The ordinary `docker-compose.yml` is for builds from the local clone. Pasting it into Portainer's editor does not give Portainer access to that clone: `build.context: .` refers to the stack's own working directory. Use the prebuilt-image file above for this installation method.
+
+### Docker image without Compose
+
+For a host-local listener:
+
+```sh
+./scripts/build-image.sh
+docker run --rm --env-file .env -p 127.0.0.1:8000:8000 craft-openapi-wrapper:local
+```
+
+The Dockerfile uses Python 3.12 and the lockfile, installs no dev dependencies, runs as a non-root user, and checks `/health`. `.dockerignore` excludes credentials, docs, scripts, and local caches from the build context. Supply credentials at runtime. Startup and health make no Craft request. TLS/remote hosting and deployment of the tool client are outside this project.
+
+### Updating
+
+Pull changes from your clone's configured remote with `git pull --ff-only`. Keep your existing `.env` or Portainer variables; review `.env.example` for new settings without copying it over your credentials.
+
+For Python, run `uv sync --locked --dev` and restart Uvicorn.
+
+For local Compose, rebuild and apply the changes:
+
+```sh
+git pull --ff-only
+docker compose up --build -d
+docker compose ps
+```
+
+For Portainer, rebuild on the same Docker host:
+
+```sh
+git pull --ff-only
+./scripts/build-image.sh
+```
+
+Then open the stack in Portainer, copy any changes from `docker-compose.portainer.yml` into its editor, and **Update the stack** with re-pulling disabled. Ensure the container is recreated from the rebuilt image; if it is retained, use the container's **Recreate** action with pulling disabled. Restarting an existing container alone does not apply a rebuilt image. Check health and logs after recreation. A locally built image is not updated by Portainer's registry-pull or GitOps settings.
+
+For a standalone `docker run` container, rebuild with the script, stop the old container, and run the replacement with the same environment and port/network settings.
 
 ## Configuration
 
@@ -80,7 +155,7 @@ All paths below start with `/v1/space`. Reads/updates return `200`; creates/inse
 | `POST /collections/{collectionId}/items`           | `craft_space_add_collection_item`               | One `{title,properties?:{key:"string"}}` item.                                                                                                  |
 | `PATCH /collections/{collectionId}/items/{itemId}` | `craft_space_update_collection_item_properties` | Nonempty `{properties:{key:"string"}}`; omitted keys preserved.                                                                                 |
 
-Document IDs equal root block IDs. There is no separate document-detail endpoint. Creation does not implicitly insert content: call insertion separately with the returned ID. Insertions may create multiple blocks.
+Use the `id` returned by document discovery as the API root block ID, or `documentId` returned by content search. `clickableLink` is a navigation link: its embedded `documentId` can differ from the API ID and return `404` if used in an API request. Do not extract IDs from it for content reads or writes. A collection block's `id` can also be its collection ID; block and collection IDs are not disjoint namespaces. There is no separate document-detail endpoint. Creation does not implicitly insert content: call insertion separately with the returned ID. Insertions may create multiple blocks.
 
 Both document list and search support `createdDateGte/Lte`, `lastModifiedDateGte/Lte`, and `dailyNoteDateGte/Lte`. Dates are real `YYYY-MM-DD` calendar dates or `today`/`tomorrow`/`yesterday`; relative dates pass to Craft unchanged. Reversed absolute ranges and conflicting filters are rejected. Location values for reads are `unsorted`, `trash`, `templates`, and `daily_notes`. IDs are opaque nonempty strings; URL path dot segments `.`/`..` cannot be used as collection IDs.
 
@@ -89,6 +164,8 @@ Depth `0` reads only the requested root (or collection properties), positive val
 The implemented lists have no documented pagination; the wrapper adds no cursors, limits, or totals. Search is relevance-limited, not exhaustive. Prefer filters and finite depth: incoming bodies are capped at **1 MiB**, upstream responses at **8 MiB**, including streamed data. Oversized results produce an error instead of truncation.
 
 Collection reads allow dynamic JSON property values. Writes accept **strings only** and use keys/options discovered from the schema. Craft validates whether a string is suitable for that property's type. Relations, numeric/boolean/complex writes, null clearing, and item-title updates are unsupported. Stored views are not executed.
+
+Schema option lists accept the documented string labels and observed `{name,color?}` objects, preserving the supplied representation. Title-property metadata (`contentPropDetails`) is optional because Craft may omit it. Property type strings such as the documented `select` and observed `singleSelect` are preserved without normalization. Single-select item values can be strings; multi-select values can be arrays. Both read shapes are preserved, while array writes remain unsupported. Existing row values are not a substitute for a schema: they do not reveal unused options or the full property contract.
 
 ## Errors and write outcomes
 
@@ -109,6 +186,8 @@ Every error has an `error` object containing `code`, `message`, `requestId`, and
 | `504`  | `craft_timeout`.                                                                                                                                                                           |
 
 There are **no automatic retries** on any operation. Craft budgets are shared across connections, clients, MCP, and public-IP users; a local limiter cannot reserve them. Safe upstream codes/messages are bounded and redacted; unrecognized bodies receive a fixed message. No raw upstream body or secret URL is returned in an error.
+
+Distinguish a `502` with an upstream failure and retry guidance from an unexpected response shape after a successful Craft response. A schema parsing mismatch is deterministic until the model or upstream shape changes; backoff does not repair it. For transient reads, callers can honor `retryAfterSeconds` before retrying. The wrapper does not assume every upstream `502` is throttling or convert it into `429`.
 
 A write failure after submission can leave its outcome uncertain, including malformed success responses. Such errors set `outcomeUnknown=true`. Inspect the target before retrying; the wrapper provides neither transactions nor rollback. Conservatively, upstream write rejection responses also carry this flag because the docs provide no atomicity guarantee.
 
@@ -132,40 +211,7 @@ All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with
 
 Response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Fixture generation never edits the source docs.
 
-Live Craft validation is optional and separate. In particular, secret-link-only authentication is an assumption from the documented URL pattern; no additional Craft auth headers or OAuth flow were documented or implemented.
-
-## Docker
-
-```sh
-docker build -t craft-openapi-wrapper .
-docker run --rm --env-file .env -p 127.0.0.1:8000:8000 craft-openapi-wrapper
-```
-
-The image uses Python 3.12 and the lockfile, installs no dev dependencies, runs as a non-root user, and checks `/health`. Supply secrets at runtime. For Open WebUI on the same Docker network, add `--network NETWORK --name craft-wrapper` and use `http://craft-wrapper:8000`; a published host port is unnecessary for container-to-container calls. TLS/remote hosting and Open WebUI deployment are outside this project.
-
-### Compose and Portainer
-
-`docker-compose.yml` builds from this repository and connects to an existing Docker network shared with the tool client. It publishes no host ports and contains no deployment-specific hostnames, paths, or network names. The Dockerfile supplies the non-root user and health check.
-
-For a Portainer **Docker Standalone** environment, add a stack using **Git Repository**, select the repository and branch, and set **Compose path** to `docker-compose.yml`. Configure these stack environment variables:
-
-- `CRAFT_SPACE_BASE_URL`: your secret Craft Space connection URL.
-- `WRAPPER_API_TOKEN`: your independent wrapper bearer token.
-- `WRAPPER_NETWORK`: the existing network also attached to Open WebUI or another tool client.
-- Optionally, either timeout setting, `WRAPPER_ENABLED_OPERATIONS`, and `WRAPPER_PUBLIC_URL` as described above. Omit unused optional settings entirely; empty values are invalid.
-
-Keep credentials in Portainer's configuration. No `.env` file or host directory is mounted into the container. Configure Open WebUI to use `http://craft-wrapper:8000/openapi.json` and the wrapper bearer token. Use one wrapper service with this name per shared network to avoid DNS alias collisions.
-
-Portainer's [Git stack documentation](https://docs.portainer.io/user/docker/stacks/add) describes repository selection and stack variables. This build-based configuration targets Docker Standalone; Docker Swarm requires a separately built and published image.
-
-For local Compose use, add `WRAPPER_NETWORK` to your ignored `.env`, ensure the network exists and the client is attached, then run:
-
-```sh
-docker compose up --build -d
-docker compose ps
-```
-
-Rebuild when source changes. Building the image requires access to its base images and dependency registry; starting the container makes no Craft request until a data endpoint is called.
+Live Craft validation is separate from automated tests. A read-only probe reproduced schema option objects and missing title metadata; regression cases use generic synthetic values, not captured personal schemas. Secret-link-only authentication worked for those reads. No additional Craft auth headers or OAuth flow were documented or implemented, and select writes were not live-tested.
 
 ## Architecture and later APIs
 

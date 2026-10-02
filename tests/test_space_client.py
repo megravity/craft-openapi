@@ -115,3 +115,84 @@ def test_additional_upstream_fields_do_not_leak():
         lambda c: c.list_documents({}),
     )
     assert result.model_dump(exclude_none=True) == {"items": [{"id": "d", "title": "D"}]}
+
+
+@pytest.mark.parametrize("title_metadata", [None, {"key": "title", "name": "Title"}])
+@pytest.mark.parametrize("property_type", ["select", "singleSelect"])
+def test_schema_accepts_object_options_and_optional_title_metadata(title_metadata, property_type):
+    payload = {
+        "name": "Example collection",
+        "properties": [
+            {
+                "key": "decision",
+                "name": "Decision",
+                "type": property_type,
+                "options": [
+                    {"name": "Yes", "color": "green", "unmodeled": "ignored"},
+                    {"name": "No"},
+                    "Maybe",
+                ],
+            }
+        ],
+    }
+    if title_metadata is not None:
+        payload["contentPropDetails"] = title_metadata
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/collections/example-collection/schema"
+        assert dict(request.url.params) == {"format": "schema"}
+        return httpx.Response(200, json=payload)
+
+    result = call(handler, lambda c: c.get_collection_schema("example-collection"))
+    serialized = result.model_dump(exclude_none=True)
+    assert serialized["properties"][0]["type"] == property_type
+    assert serialized["properties"][0]["options"] == [
+        {"name": "Yes", "color": "green"},
+        {"name": "No"},
+        "Maybe",
+    ]
+    assert serialized.get("contentPropDetails") == title_metadata
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("options", [[123], [{}], [{"name": 123}], [{"name": "Yes", "color": []}]])
+def test_malformed_schema_options_are_not_fabricated(options):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "name": "Example collection",
+                "properties": [
+                    {"key": "status", "name": "Status", "type": "select", "options": options}
+                ],
+            },
+        )
+
+    with pytest.raises(CraftError) as raised:
+        call(handler, lambda c: c.get_collection_schema("example-collection"))
+    assert raised.value.code == "craft_upstream_error"
+    assert len(calls) == 1
+
+
+def test_document_api_id_is_independent_from_navigation_link():
+    payload = {
+        "items": [
+            {
+                "id": "api-root-slug",
+                "title": "Example document",
+                "clickableLink": "craftdocs://open?spaceId=example-space&documentId=app-only-id",
+            }
+        ]
+    }
+    documents = call(
+        lambda request: httpx.Response(200, json=payload),
+        lambda c: c.list_documents({"fetchMetadata": True}),
+    )
+    assert documents.items[0].id == "api-root-slug"
+    assert documents.items[0].clickableLink == payload["items"][0]["clickableLink"]

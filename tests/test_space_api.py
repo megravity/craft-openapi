@@ -12,6 +12,43 @@ from craft_wrapper.main import create_app
 AUTH = {"Authorization": "Bearer test-wrapper-token"}
 PREFIX = "/v1/space"
 
+
+def test_live_schema_shape_and_select_value_cardinality(settings):
+    schema = {
+        "name": "Example collection",
+        "properties": [
+            {
+                "key": "decision",
+                "name": "Decision",
+                "type": "singleSelect",
+                "options": [{"name": "Yes", "color": "green"}, {"name": "No"}],
+            }
+        ],
+    }
+    items = {"items": [{"id": "example-item", "properties": {"decision": "Yes", "tags": ["A"]}}]}
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json=schema)
+        assert request.url.path.endswith("/items")
+        return httpx.Response(200, json=items)
+
+    with TestClient(
+        create_app(settings, upstream_transport=httpx.MockTransport(handler))
+    ) as client:
+        path = PREFIX + "/collections/example-collection"
+        response = client.get(path + "/schema", headers=AUTH)
+        assert response.status_code == 200
+        assert response.json() == schema
+        response = client.get(path + "/items", headers=AUTH)
+        assert response.status_code == 200
+        assert response.json() == items
+    assert len(calls) == 2
+
+
 # Independent public/upstream contracts: no implementation metadata drives these cases.
 CASES = [
     ("GET", "/folders", None, "GET /folders", {}, None, 200),

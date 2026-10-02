@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -29,7 +29,7 @@ from craft_wrapper.craft.space.models import (
     Folder,
 )
 
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     status: {"model": ErrorResponse, "description": description}
     for status, description in {
         400: "Craft rejected the request.",
@@ -85,7 +85,8 @@ def make_router() -> APIRouter:
         "its root block ID. Choose location OR folderId; folders include "
         "subfolders. With no scope filter this returns all documents and may "
         "be large; list_folders first. This is not content search. No pagination "
-        "is documented. Metadata is optional.",
+        "is documented. Metadata is optional. Use each item's id for API calls; "
+        "clickableLink is for navigation and can contain a different documentId.",
     )
     async def list_documents(client: Client, filters: Annotated[DocumentFilters, Query()]):
         return await client.list_documents(filters.model_dump(exclude_none=True))
@@ -131,7 +132,8 @@ def make_router() -> APIRouter:
         response_model_exclude_none=True,
         summary="Read structured page content",
         description="Read a document/page root and nested blocks with IDs and hierarchy. "
-        "Use a document ID from list_documents or search_documents as blockId. "
+        "Use the id from list_documents or documentId from search_documents as blockId; "
+        "do not extract an API ID from clickableLink. "
         "Use returned text-block IDs for update_block_markdown. Default depth 1 "
         "omits deeper descendants; -1 reads all descendants. Prefer "
         "read_markdown for reading and summarization. Craft links are preserved.",
@@ -193,6 +195,7 @@ def make_router() -> APIRouter:
         response_model_exclude_none=True,
         summary="Discover existing collections",
         description="List collections in the Space, optionally narrowed to one document. "
+        "A collection block's id can also be its collection ID. "
         "Use a returned collection ID with get_collection_schema before writing "
         "items. This does not list rows or execute stored views. No pagination "
         "is documented.",
