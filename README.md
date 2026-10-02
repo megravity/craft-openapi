@@ -78,6 +78,27 @@ The clone's `.env` is not automatically read by Portainer. Enter variables in Po
 
 The ordinary `docker-compose.yml` is for builds from the local clone. Pasting it into Portainer's editor does not give Portainer access to that clone: `build.context: .` refers to the stack's own working directory. Use the prebuilt-image file above for this installation method.
 
+#### Optional stack update after building
+
+On **Portainer Business Edition**, enable **Create a stack webhook** in the stack's **Editor** and copy its URL. Stack webhooks are available on non-Edge environments. The build host must reach Portainer and build on the Docker environment where the stack runs. See [Portainer's stack webhook documentation](https://docs.portainer.io/user/docker/stacks/webhooks).
+
+Store the copied URL in the clone's ignored `.portainer-webhook` file:
+
+```sh
+cp .portainer-webhook.example .portainer-webhook
+chmod 600 .portainer-webhook
+# Edit .portainer-webhook: replace its entire line with the copied webhook URL.
+./scripts/build-image.sh
+```
+
+Use the bare URL without query parameters. It grants deployment access; do not commit or share it. The script appends `pullimage=false` so Portainer uses the locally rebuilt image rather than pulling from a registry. Keep `pull_policy: never` in the stack. The webhook redeploys Portainer's saved stack definition; changes to the clone's Compose file still need to be copied into the stack editor.
+
+Alternatively, export `PORTAINER_WEBHOOK_URL` in the build shell. It overrides the file; setting it to an empty string disables the webhook for that invocation. The build script does not load `.env` or require this setting in the application container. With neither setting, the script only builds, as before.
+
+The optional hook requires `curl`. Configuration is checked before building. After a successful build, the script sends one POST with a 10-second connection timeout and a 60-second overall timeout. It does not follow redirects, retry, or print the secret URL or response body. A failed build never triggers the hook. A failed/rejected webhook makes the script exit nonzero, although the image has already been built. Check stack state before retrying an uncertain request.
+
+Portainer returns before deployment completes. A successful script reports that the request was **accepted**; check the stack's deployment status, container image, health, and logs to confirm the update finished. Removing `.portainer-webhook` disables the saved hook. Community Edition installations can continue using the manual update procedure below.
+
 ### Docker image without Compose
 
 For a host-local listener:
@@ -110,9 +131,23 @@ git pull --ff-only
 ./scripts/build-image.sh
 ```
 
-Then open the stack in Portainer, copy any changes from `docker-compose.portainer.yml` into its editor, and **Update the stack** with re-pulling disabled. Ensure the container is recreated from the rebuilt image; if it is retained, use the container's **Recreate** action with pulling disabled. Restarting an existing container alone does not apply a rebuilt image. Check health and logs after recreation. A locally built image is not updated by Portainer's registry-pull or GitOps settings.
+With the optional webhook configured, the build script automatically requests a stack update after building. Check Portainer to confirm deployment completed. If `docker-compose.portainer.yml` changed, apply those changes to the stack editor as well; the webhook does not read your clone.
+
+Without the webhook, open the stack in Portainer, copy any changes from `docker-compose.portainer.yml` into its editor, and **Update the stack** with re-pulling disabled. Ensure the container is recreated from the rebuilt image; if it is retained, use the container's **Recreate** action with pulling disabled. Restarting an existing container alone does not apply a rebuilt image. Check health and logs after recreation. A locally built image is not updated by Portainer's registry-pull or GitOps settings.
 
 For a standalone `docker run` container, rebuild with the script, stop the old container, and run the replacement with the same environment and port/network settings.
+
+## Versioning
+
+This iteration is **0.2.0**. Releases use Git tags such as `v0.2.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` URL identifies the HTTP contract independently of the project release number.
+
+OpenAPI `info.version` comes from the installed package version. The standalone Open WebUI tool includes its release version in the metadata header. Docker images carry `org.opencontainers.image.version`; `craft-openapi-wrapper:local` remains the mutable tag used by the Portainer stack. Check the running container's release with:
+
+```sh
+docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontainers.image.version" }}'
+```
+
+For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and tool metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
 
 ## Configuration
 
@@ -205,6 +240,44 @@ A write failure after submission can leave its outcome uncertain, including malf
 
 ## Open WebUI
 
+### Workspace Python tool
+
+The standalone [Craft wrapper tool](integrations/openwebui/craft_wrapper_tool.py) explicitly calls this HTTP wrapper for all 13 operations. It does not connect directly to Craft and does not require the wrapper Python package inside Open WebUI. Its structure follows Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
+
+1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of `integrations/openwebui/craft_wrapper_tool.py` into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
+2. Open the tool's **Valves** settings and configure the values below. The token field uses Open WebUI's [password input convention](https://docs.openwebui.com/features/extensibility/plugin/development/valves/); masking the input does not itself encrypt stored values. Restrict tool access to the intended users.
+3. Enable the tool in a chat with a model that supports tool calling. Native function calling is recommended. Ask it to list folders first; the returned HTTP status should be `200` and `response.items` should contain the wrapper's result.
+
+| Valve | Value |
+|---|---|
+| `WRAPPER_URL` | Wrapper origin reachable from Open WebUI, such as `http://craft-wrapper:8000` on a shared Docker network. No `/v1/space` suffix. |
+| `WRAPPER_API_TOKEN` | The wrapper's `WRAPPER_API_TOKEN`, without `Bearer `. Never use the Craft connection URL here. |
+| `TIMEOUT_SECONDS` | Default `45`, covering the wrapper's default 30-second upstream deadline plus network overhead. |
+
+The tool has named functions matching the wrapper's operation IDs. Query arguments go inside `parameters`; write payloads go inside `body`. IDs remain separate arguments. For example:
+
+```json
+{
+  "parameters": {
+    "query": "example",
+    "documentId": "example-document",
+    "fetchBlocks": true
+  }
+}
+```
+
+These are arguments for `craft_space_search_documents`. A block update uses `craft_space_update_block_markdown` with `{"blockId":"example-text-block","body":{"markdown":"Updated text"}}`. Collection writes accept string-valued properties only; the wrapper validates dates, depths, scopes, and payloads.
+
+Nested query/body keys are forwarded without silently removing unknown fields. For instance, `craft_space_list_documents` with `{"parameters":{"documentId":"example-document"}}` reaches the wrapper and returns `422`, because that listing filter is unsupported. Open WebUI can still discard unsupported **top-level** arguments; put query fields inside `parameters` as documented.
+
+Each result contains `request` (method, path, serialized query), `statusCode`, `requestId`, and the unchanged JSON `response`. This distinguishes a wrapper rejection from a tool connection/decoding failure. Authentication headers and write bodies are not included in request evidence. Wrapper error codes, retry guidance, and uncertain-write flags are preserved. The tool does not follow redirects or retry requests; failed writes after submission are marked uncertain. Results exceeding 9 MiB are rejected rather than truncated.
+
+All 13 functions remain visible in this Python tool. `WRAPPER_ENABLED_OPERATIONS` still enforces permissions on the server; disabled operations return `404`. Use `read_only` on the wrapper to prohibit writes. Choose either this tool or the OpenAPI registration below for a chat to avoid duplicate operations.
+
+To update the installed tool after pulling repository changes, replace its code in the Open WebUI editor with the current file and save it. Check its Valves settings afterward. Rebuilding the wrapper image does not update the separately installed Open WebUI tool. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the folder-list smoke check above.
+
+### OpenAPI tool server
+
 Register this as a **backend/global OpenAPI tool server**, using the wrapper origin and `/openapi.json`, with `Authorization: Bearer <WRAPPER_API_TOKEN>`. Restrict access to the intended user in Open WebUI. Enable selected tools in the chat. The server-side allowlist remains authoritative even if a consumer cached an older schema.
 
 Use an address reachable from the Open WebUI backend. When both services are containers on the same Docker network, use the wrapper container's service name and port. A backend container's `localhost` is that container; on Docker Desktop, `host.docker.internal` can reach a host listener bound to a reachable interface. A listener bound to `127.0.0.1` is intended for host-local access. CORS is not enabled because this integration uses backend calls.
@@ -215,8 +288,8 @@ Open WebUI can import the OpenAPI 3.x schema and call ordinary HTTP operations. 
 
 ```sh
 uv run --locked pytest -q
-uv run --locked ruff check src tests
-uv run --locked ruff format --check src tests
+uv run --locked ruff check src tests integrations
+uv run --locked ruff format --check src tests integrations
 uvx basedpyright
 ```
 
@@ -263,4 +336,18 @@ Expose permission-specific tool-server URLs, starting with an explicit read-only
 
 Each profile must expose only its allowed HTTP routes and generate OpenAPI from those same routes. Enforce the scope on the server and bind credentials to permitted profiles, so a read-only tool cannot gain write access by calling a different URL. The deployment-wide operation allowlist remains an upper bound on every profile.
 
+Use the generated OpenAPI operation IDs to communicate available operations to clients, rather than copying `WRAPPER_ENABLED_OPERATIONS` into Open WebUI settings. As an interim step, evaluate a capability-discovery function in the Python tool that reads the existing `/openapi.json` and reports the enabled operations. After scoped routes are added, discovery will read that profile's schema. Discovery failures must be reported rather than interpreted as full access; any cached result needs a bounded lifetime and refresh when the configured URL changes. The server remains authoritative if permissions change after discovery.
+
+Open WebUI's OpenAPI integration can discover operations from the scoped schema. The Workspace Python tool has a separate constraint: its predefined function list is stored when the tool is saved. Capability discovery informs the model but does not automatically remove disabled functions from that list. Evaluate generating a reduced Python tool from a scoped schema during installation/update if hiding unavailable functions is required; avoid modifying Open WebUI internals or maintaining a second permission list.
+
 The existing `WRAPPER_ENABLED_OPERATIONS` presets apply to the entire deployment and use one shared token. They do not yet provide separate permission URLs or credentials per tool. Existing Space paths and operation IDs will remain stable when these scoped entry points are added.
+
+### Reusable block and collection shapes (evaluation)
+
+Evaluate named, versioned definitions for repeatable content structures, starting with a tasks collection. The aim is for creation through an LLM tool or a direct HTTP API call to use the same server-owned definition, defaults, and validation. Proposed task fields could include a title, status with explicit options, and a due date; settle the actual property keys, Craft types, and supported write values before defining the contract.
+
+Keep block content structure, collection column schemas, and collection-item values distinct. A tasks collection is a collection of rows; it does not by itself establish native Craft task behavior. Verify the documented creation contracts and returned shapes before promising task integration or accepting additional property types.
+
+Start with one concrete definition and evaluate how clients discover its shape and select its version when creating content. The API should apply that definition, and the Open WebUI tool should call the same API rather than recreate its rules. Acceptance checks should compare creation through both entry points and confirm consistent columns, options, defaults, and item validation. Collection creation is currently deferred; implementing this feature depends on adding the relevant creation operations and permissions.
+
+Do not replace schemas on existing collections implicitly. Report incompatible shapes and require an explicit migration decision. Broader templates, dynamic per-collection OpenAPI generation, and a general schema registry are outside the initial evaluation.

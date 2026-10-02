@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.portainer-webhook
 .venv/
 .uv-cache/
 __pycache__/

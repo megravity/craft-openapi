@@ -1,4 +1,8 @@
 import json
+import re
+import tomllib
+from importlib.metadata import version
+from pathlib import Path
 
 import httpx
 import pytest
@@ -17,6 +21,22 @@ def operations(spec):
         for method, operation in path.items()
         if method in {"get", "post", "patch", "put", "delete"}
     ]
+
+
+def test_release_versions_match_package_schema_image_and_tool(settings):
+    root = Path(__file__).parents[1]
+    release = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", release)
+    assert version("craft-openapi-wrapper") == release
+    assert create_app(settings).openapi()["info"]["version"] == release
+    assert (
+        f'LABEL org.opencontainers.image.version="{release}"' in (root / "Dockerfile").read_text()
+    )
+    tool_metadata = (
+        (root / "integrations/openwebui/craft_wrapper_tool.py").read_text().split('"""')[1]
+    )
+    assert f"version: {release}" in tool_metadata.splitlines()
+    assert f"## {release} — " in (root / "CHANGELOG.md").read_text()
 
 
 @pytest.mark.parametrize("preset", [None, "full"])

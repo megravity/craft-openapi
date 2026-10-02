@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 
 import httpx
 from fastapi import FastAPI
@@ -78,7 +79,7 @@ def create_app(
 
     app = FastAPI(
         title="Craft Space tools",
-        version="0.1.0",
+        version=version("craft-openapi-wrapper"),
         lifespan=lifespan,
         description="Selected Craft Space operations. All data calls share one configured Space "
         "connection and require the wrapper bearer token. No automatic write retries.",
