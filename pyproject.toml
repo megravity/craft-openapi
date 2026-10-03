@@ -23,6 +23,7 @@ packages = ["src/craft_wrapper"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.pyright]
 include = ["src", "tests", "integrations", "scripts"]

@@ -4,6 +4,7 @@ import argparse
 import re
 import subprocess
 import tomllib
+from collections.abc import Callable, Iterable
 from datetime import date
 from pathlib import Path
 
@@ -61,32 +62,41 @@ def prepare_notes(tag: str, repo: Path = Path(".")) -> str:
     if re.fullmatch(TAG_PATTERN, tag) is None:
         raise ValueError("Release tags must be vMAJOR.MINOR.PATCH without leading zeroes")
     version = tag[1:]
-    project = tomllib.loads(tagged_file(repo, tag, "pyproject.toml"))
+    return validate_release(
+        version, lambda path: tagged_file(repo, tag, path), tagged_tool_paths(repo, tag)
+    )
+
+
+def validate_release(
+    version: str, read_file: Callable[[str], str], tool_paths: Iterable[str]
+) -> str:
+    """Validate matching release metadata in either a working tree or a tagged snapshot."""
+    project = tomllib.loads(read_file("pyproject.toml"))
     if project.get("project", {}).get("version") != version:
-        raise ValueError("Release tag does not match the tagged package version")
-    lock = tomllib.loads(tagged_file(repo, tag, "uv.lock"))
+        raise ValueError("Release version does not match the package version")
+    lock = tomllib.loads(read_file("uv.lock"))
     package_versions = [
         package.get("version")
         for package in lock.get("package", [])
         if package.get("name") == "craft-openapi-wrapper"
     ]
     if package_versions != [version]:
-        raise ValueError("Tagged lockfile does not match the package version")
-    dockerfile = tagged_file(repo, tag, "Dockerfile")
+        raise ValueError("Release lockfile does not match the package version")
+    dockerfile = read_file("Dockerfile")
     if re.findall(r'^LABEL org\.opencontainers\.image\.version="([^"]+)"$', dockerfile, re.M) != [
         version
     ]:
-        raise ValueError("Tagged Docker image label does not match the package version")
+        raise ValueError("Release Docker image label does not match the package version")
     paths = ["integrations/openwebui/craft_wrapper_tool.py"]
     documents_tool = "integrations/openwebui/craft_documents_tool.py"
-    if documents_tool in tagged_tool_paths(repo, tag):
+    if documents_tool in tool_paths:
         paths.append(documents_tool)
     for path in paths:
-        tool = tagged_file(repo, tag, path)
+        tool = read_file(path)
         header = re.match(r'\s*"""(.*?)"""', tool, re.S)
         if header is None or re.findall(r"^version: (\S+)$", header[1], re.M) != [version]:
-            raise ValueError("Tagged Open WebUI tool version does not match the package version")
-    return changelog_notes(tagged_file(repo, tag, "CHANGELOG.md"), version)
+            raise ValueError("Release Open WebUI tool version does not match the package version")
+    return changelog_notes(read_file("CHANGELOG.md"), version)
 
 
 def main() -> None:

@@ -40,7 +40,7 @@ Use concise imperative subjects, following history: `Fix collection schema parsi
 
 ## Versioning
 
-Use patch releases for compatible fixes and minor releases for capabilities. Documentation edits normally need no version bump. Follow [PROJECT.md's release steps](PROJECT.md#versioning-and-releases); keep package, image/tool metadata, and changelog aligned. Tag release commits `vX.Y.Z`; do not move existing tags.
+Use patch releases for compatible fixes and minor releases for capabilities. Documentation edits normally need no version bump. Review `CHANGELOG.md`'s `Unreleased` notes, then use `./scripts/prepare-release.sh X.Y.Z --dry-run` before applying preparation. Follow [PROJECT.md's release steps](PROJECT.md#versioning-and-releases). Commit, tag, and push separately; do not move existing tags.
 
 ## Security & Configuration
 

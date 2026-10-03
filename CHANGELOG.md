@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `./scripts/prepare-release.sh` to promote reviewed changelog notes and align package, lockfile, Docker, Open WebUI tool, and documentation versions. Committing, tagging, and publishing remain separate steps.
+
 ## 0.3.0 — 2026-10-03
 
 - Add 11 Multi-Document operations and a dedicated standalone Open WebUI tool, preserving selected-document scope, deletion status, and include/exclude filtering.

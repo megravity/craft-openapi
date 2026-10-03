@@ -51,8 +51,8 @@ Version numbers identify releases, not individual commits. Our convention is pat
 
 For a release:
 
-1. Update the version in `pyproject.toml`, the Dockerfile's `org.opencontainers.image.version` label, and both Open WebUI tools' metadata headers.
-2. Run `uv lock` and `uv sync --locked --dev`; OpenAPI `info.version` comes from the installed package metadata. Add a dated changelog entry and update release references in the documentation.
+1. Review the notes under `## Unreleased` in `CHANGELOG.md` and choose an explicit next version.
+2. Run `./scripts/prepare-release.sh X.Y.Z --dry-run`, then repeat without `--dry-run`. The command promotes the notes into a dated release and updates package, lockfile, Docker, both tools, and current-version documentation. It also syncs installed package metadata for OpenAPI `info.version`; see [local release preparation](README.md#prepare-a-release-locally) for date overrides and failure recovery.
 3. Run tests, lint, formatting checks, and type checks. The version-consistency test checks package, OpenAPI, image-label, both tools, and changelog alignment.
 4. Commit the release and create an annotated `vX.Y.Z` tag on that commit. Keep existing release tags unchanged; subsequent commits belong to future releases. Push the commit and tag when ready to publish: [the GitHub release workflow](README.md#github-releases) validates tagged metadata and publishes that tag's changelog notes. Use its manual trigger for older tags.
 

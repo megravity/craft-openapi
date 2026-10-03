@@ -166,7 +166,22 @@ OpenAPI `info.version` comes from the installed package version. Both standalone
 docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontainers.image.version" }}'
 ```
 
-For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and both tools' metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
+For an exact source release, check out its Git tag before building. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
+
+### Prepare a release locally
+
+Keep reviewed changes under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md). Choose the next version explicitly, then run from the repository root:
+
+```sh
+./scripts/prepare-release.sh 0.4.0 --dry-run
+./scripts/prepare-release.sh 0.4.0
+```
+
+`0.4.0` is an example, not an automatic version choice. The command moves those notes into a dated release entry, leaves an empty `Unreleased` section, and updates `pyproject.toml`, the Docker label, both tool headers, and current-version references in README/PROJECT. It runs `uv lock` and `uv sync --locked --dev` to align the lockfile and installed package metadata. The default date is the local calendar date; override it with `--date YYYY-MM-DD`.
+
+The dry run validates the inputs and lists affected files without changing them or running lock/sync. Empty notes, inconsistent current metadata, an existing local release tag, or a non-increasing version fail preparation. If lock/sync or final validation fails, release files are restored; run `uv sync --locked --dev` to reconcile the environment.
+
+Review `git diff` and run [the project checks](#tests-and-checks) before committing and tagging. The command never commits, tags, pushes, builds images, or deploys. Ordinary commits can continue without preparing a release.
 
 ### GitHub releases
 
