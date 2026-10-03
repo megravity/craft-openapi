@@ -14,10 +14,11 @@ from pydantic import ValidationError, create_model
 from craft_wrapper.main import create_app
 
 
-@pytest.fixture
-def tool_module() -> Any:
-    path = Path(__file__).parents[1] / "integrations/openwebui/craft_wrapper_tool.py"
-    spec = importlib.util.spec_from_file_location("craft_owui_test", path)
+@pytest.fixture(params=["space", "documents"])
+def tool_module(request) -> Any:
+    filename = "craft_wrapper_tool.py" if request.param == "space" else "craft_documents_tool.py"
+    path = Path(__file__).parents[1] / "integrations/openwebui" / filename
+    spec = importlib.util.spec_from_file_location("craft_owui_test_" + request.param, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -32,6 +33,26 @@ def tool(tool_module):
         WRAPPER_URL="http://wrapper.test", WRAPPER_API_TOKEN="test-wrapper-token"
     )
     return result
+
+
+def adapter(tool) -> str:
+    return "space" if hasattr(tool, "craft_space_list_documents") else "documents"
+
+
+def operation(tool, name):
+    return getattr(tool, "craft_" + adapter(tool) + "_" + name)
+
+
+def tool_app(settings, tool, upstream):
+    if adapter(tool) == "documents":
+        settings = settings.model_copy(
+            update={
+                "craft_documents_base_url": settings.craft_space_base_url,
+                "craft_space_base_url": None,
+            }
+        )
+        return create_app(settings, documents_upstream_transport=httpx.MockTransport(upstream))
+    return create_app(settings, upstream_transport=httpx.MockTransport(upstream))
 
 
 def connect_mock(monkeypatch, tool_module, handler):
@@ -151,13 +172,15 @@ def connect_mock(monkeypatch, tool_module, handler):
 def test_all_operation_mappings(
     tool_module, tool, monkeypatch, name, arguments, method, path, query, body
 ):
+    if not hasattr(tool, "craft_" + adapter(tool) + "_" + name):
+        pytest.skip("Space-only operation")
     calls = []
 
     def handler(request):
         calls.append(request)
         assert request.method == method
         assert request.url.host == "wrapper.test"
-        assert request.url.path == "/v1/space" + path
+        assert request.url.path == "/v1/" + adapter(tool) + path
         assert dict(request.url.params) == query
         assert request.headers["Authorization"] == "Bearer test-wrapper-token"
         assert request.headers["Accept"] == "application/json"
@@ -169,9 +192,9 @@ def test_all_operation_mappings(
         )
 
     connect_mock(monkeypatch, tool_module, handler)
-    result = asyncio.run(getattr(tool, "craft_space_" + name)(**arguments))
+    result = asyncio.run(operation(tool, name)(**arguments))
     assert result == {
-        "request": {"method": method, "path": "/v1/space" + path, "query": query},
+        "request": {"method": method, "path": "/v1/" + adapter(tool) + path, "query": query},
         "statusCode": 201 if method == "POST" else 200,
         "requestId": "trace",
         "response": {"id": "result"},
@@ -195,7 +218,7 @@ def test_unknown_fields_and_string_writes_reach_real_wrapper(
         )
 
     original = httpx.AsyncClient
-    app = create_app(settings, upstream_transport=httpx.MockTransport(upstream))
+    app = tool_app(settings, tool, upstream)
 
     async def run():
         async with app.router.lifespan_context(app):
@@ -204,18 +227,18 @@ def test_unknown_fields_and_string_writes_reach_real_wrapper(
                 "AsyncClient",
                 lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs),
             )
-            invalid = await tool.craft_space_list_documents({"documentId": "unsupported"})
+            invalid = await operation(tool, "list_documents")({"documentId": "unsupported"})
             assert invalid["statusCode"] == 422
             assert invalid["request"]["query"] == {"documentId": "unsupported"}
             assert invalid["response"]["error"]["code"] == "validation_error"
-            empty = await tool.craft_space_search_documents({"query": ""})
+            empty = await operation(tool, "search_documents")({"query": ""})
             assert empty["statusCode"] == 422
-            complex_value = await tool.craft_space_update_collection_item_properties(
+            complex_value = await operation(tool, "update_collection_item_properties")(
                 "collection", "row", {"properties": {"due": ["bad"]}}
             )
             assert complex_value["statusCode"] == 422
             assert not upstream_calls
-            valid = await tool.craft_space_update_collection_item_properties(
+            valid = await operation(tool, "update_collection_item_properties")(
                 "collection", "row", {"properties": {"due": "2026-10-02"}}
             )
             assert valid["statusCode"] == 200
@@ -233,7 +256,7 @@ def test_read_only_wrapper_still_controls_writes(tool_module, tool, monkeypatch,
         calls.append(request)
         return httpx.Response(200, json={"items": []})
 
-    app = create_app(settings, upstream_transport=httpx.MockTransport(upstream))
+    app = tool_app(settings, tool, upstream)
     original = httpx.AsyncClient
 
     async def run():
@@ -243,7 +266,7 @@ def test_read_only_wrapper_still_controls_writes(tool_module, tool, monkeypatch,
                 "AsyncClient",
                 lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs),
             )
-            result = await tool.craft_space_create_document({"title": "Example"})
+            result = await operation(tool, "insert_markdown")("page", {"markdown": "Example"})
             assert result["statusCode"] == 404
             assert result["response"]["error"]["code"] == "not_found"
             assert not calls
@@ -256,11 +279,14 @@ def test_encoded_identifiers(tool_module, tool, monkeypatch):
 
     def handler(request):
         calls.append(request)
-        assert request.url.raw_path == b"/v1/space/blocks/id%2F%3F%23%20%25/markdown"
+        assert (
+            request.url.raw_path
+            == ("/v1/" + adapter(tool) + "/blocks/id%2F%3F%23%20%25/markdown").encode()
+        )
         return httpx.Response(200, json={"markdown": "Example"})
 
     connect_mock(monkeypatch, tool_module, handler)
-    asyncio.run(tool.craft_space_read_markdown("id/?# %"))
+    asyncio.run(operation(tool, "read_markdown")("id/?# %"))
     assert len(calls) == 1
 
 
@@ -282,7 +308,7 @@ def test_wrapper_errors_preserved(tool_module, tool, monkeypatch, status):
         return httpx.Response(status, json=payload)
 
     connect_mock(monkeypatch, tool_module, handler)
-    result = asyncio.run(tool.craft_space_create_document({"title": "Example"}))
+    result = asyncio.run(operation(tool, "insert_markdown")("page", {"markdown": "Example"}))
     assert result["response"] == payload
     assert result["statusCode"] == status
     assert len(calls) == 1
@@ -316,9 +342,9 @@ def test_failure_bounds_and_no_retries(tool_module, tool, monkeypatch, failure, 
 
     connect_mock(monkeypatch, tool_module, handler)
     result = asyncio.run(
-        tool.craft_space_create_document({"title": "Example"})
+        operation(tool, "insert_markdown")("page", {"markdown": "Example"})
         if write
-        else tool.craft_space_list_folders()
+        else operation(tool, "list_documents")()
     )
     error = result["response"]["error"]
     assert error["code"] == {
@@ -345,7 +371,7 @@ def test_overall_deadline(tool_module, tool, monkeypatch):
 
     connect_mock(monkeypatch, tool_module, handler)
     tool.valves.TIMEOUT_SECONDS = 0.01
-    result = asyncio.run(tool.craft_space_create_document({"title": "Example"}))
+    result = asyncio.run(operation(tool, "insert_markdown")("page", {"markdown": "Example"}))
     assert result["response"]["error"]["code"] == "tool_wrapper_timeout"
     assert result["response"]["error"]["outcomeUnknown"] is True
     assert len(calls) == 1
@@ -357,10 +383,10 @@ def test_missing_token_and_complex_query_make_no_request(tool_module, tool, monk
 
     monkeypatch.setattr(tool_module.httpx, "AsyncClient", unexpected)
     tool.valves.WRAPPER_API_TOKEN = ""
-    result = asyncio.run(tool.craft_space_list_folders())
+    result = asyncio.run(operation(tool, "list_documents")())
     assert result["response"]["error"]["code"] == "tool_configuration_error"
     tool.valves.WRAPPER_API_TOKEN = "test-wrapper-token"
-    result = asyncio.run(tool.craft_space_list_documents({"folderId": ["unexpected"]}))
+    result = asyncio.run(operation(tool, "list_documents")({"folderId": ["unexpected"]}))
     assert result["response"]["error"]["code"] == "tool_invalid_arguments"
 
 
@@ -388,18 +414,18 @@ def test_private_request_logging_suppressed_and_filter_removed(
     logger = logging.getLogger("httpx")
     before = list(logger.filters)
     with caplog.at_level(logging.INFO, logger="httpx"):
-        asyncio.run(tool.craft_space_search_documents({"query": "private-search-text"}))
+        asyncio.run(operation(tool, "search_documents")({"query": "private-search-text"}))
     assert "private-search-text" not in caplog.text
     assert "test-wrapper-token" not in caplog.text
     assert logger.filters == before
 
 
-def test_only_thirteen_public_tools_and_nested_argument_schema(tool):
+def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == 13
-    assert all(name.startswith("craft_space_") for name, _ in public)
-    method = tool.craft_space_list_documents
+    assert len(public) == (13 if adapter(tool) == "space" else 11)
+    assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
+    method = operation(tool, "list_documents")
     hints = get_type_hints(method)
     parameter = inspect.signature(method).parameters["parameters"]
     model = create_model("DocumentArguments", parameters=(hints["parameters"], parameter.default))
@@ -407,3 +433,118 @@ def test_only_thirteen_public_tools_and_nested_argument_schema(tool):
     assert parsed.model_dump() == {"parameters": {"documentId": "unsupported"}}
     schema = model.model_json_schema()
     assert schema["properties"]["parameters"]["anyOf"][0]["additionalProperties"] is True
+
+
+def test_mocked_document_and_collection_workflows(tool_module, tool, settings, monkeypatch):
+    calls = []
+    text = "Original"
+    properties = {"status": "Todo"}
+
+    def upstream(request):
+        nonlocal text, properties
+        calls.append(request)
+        path = request.url.path.split("/api/v1/")[1]
+        if path == "documents":
+            return httpx.Response(
+                200, json={"items": [{"id": "root", "title": "Example", "isDeleted": False}]}
+            )
+        if path == "blocks" and request.method == "GET":
+            assert request.url.params["id"] == "root"
+            return httpx.Response(
+                200,
+                json={
+                    "id": "root",
+                    "type": "page",
+                    "content": [{"id": "text", "type": "text", "markdown": text}],
+                },
+            )
+        if path == "blocks":
+            body = json.loads(request.content)
+            if request.method == "POST":
+                assert body == {
+                    "markdown": "Inserted",
+                    "position": {"pageId": "root", "position": "end"},
+                }
+                return httpx.Response(
+                    200,
+                    json={"items": [{"id": "new-text", "type": "text", "markdown": "Inserted"}]},
+                )
+            assert body == {"blocks": [{"id": "new-text", "markdown": "Updated"}]}
+            text = body["blocks"][0]["markdown"]
+            return httpx.Response(
+                200, json={"items": [{"id": "new-text", "type": "text", "markdown": text}]}
+            )
+        if path == "collections":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "collection",
+                            "name": "Example",
+                            "documentId": "root",
+                            "itemCount": 0,
+                        }
+                    ]
+                },
+            )
+        if path.endswith("/schema"):
+            return httpx.Response(
+                200,
+                json={
+                    "name": "Example",
+                    "properties": [
+                        {
+                            "key": "status",
+                            "name": "Status",
+                            "type": "select",
+                            "options": ["Todo", "Done"],
+                        }
+                    ],
+                },
+            )
+        assert path == "collections/collection/items"
+        body = json.loads(request.content)
+        if request.method == "POST":
+            assert body == {"items": [{"title": "Example", "properties": {"status": "Todo"}}]}
+        else:
+            assert body == {"itemsToUpdate": [{"id": "row", "properties": {"status": "Done"}}]}
+            properties = body["itemsToUpdate"][0]["properties"]
+        return httpx.Response(200, json={"items": [{"id": "row", "properties": properties}]})
+
+    original = httpx.AsyncClient
+    app = tool_app(settings, tool, upstream)
+
+    async def run():
+        async with app.router.lifespan_context(app):
+            monkeypatch.setattr(
+                tool_module.httpx,
+                "AsyncClient",
+                lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs),
+            )
+            documents = await operation(tool, "list_documents")()
+            root = documents["response"]["items"][0]["id"]
+            content = await operation(tool, "get_block")(root)
+            assert content["response"]["content"][0]["id"] == "text"
+            inserted = await operation(tool, "insert_markdown")(root, {"markdown": "Inserted"})
+            assert inserted["statusCode"] == 201
+            new_id = inserted["response"]["items"][0]["id"]
+            updated = await operation(tool, "update_block_markdown")(
+                new_id, {"markdown": "Updated"}
+            )
+            assert updated["response"]["markdown"] == "Updated"
+            collections = await operation(tool, "list_collections")({"documentId": root})
+            collection = collections["response"]["items"][0]["id"]
+            schema = await operation(tool, "get_collection_schema")(collection)
+            key = schema["response"]["properties"][0]["key"]
+            row = await operation(tool, "add_collection_item")(
+                collection, {"title": "Example", "properties": {key: "Todo"}}
+            )
+            assert row["statusCode"] == 201
+            updated_row = await operation(tool, "update_collection_item_properties")(
+                collection, row["response"]["id"], {"properties": {key: "Done"}}
+            )
+            assert updated_row["response"]["properties"] == {"status": "Done"}
+
+    asyncio.run(run())
+    assert len(calls) == 8

@@ -101,6 +101,7 @@ def test_incomplete_or_mismatched_release_rejected(
     release_module, release_files, monkeypatch, path, content, error
 ):
     release_files[path] = content
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
     monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
     with pytest.raises(ValueError, match=error):
         release_module.prepare_notes("v0.2.0")
@@ -132,3 +133,21 @@ def test_only_matching_release_notes_are_extracted(release_module):
     assert release_module.changelog_notes(text, "0.2.0") == (
         "- Example capability.\n\n### Details\n\n- Keep subheadings.\n"
     )
+
+
+@pytest.mark.parametrize("header", ['"""\nversion: 0.3.0\n"""', "# missing metadata"])
+def test_documents_tool_version_validated_when_in_tag(
+    release_module, release_files, monkeypatch, header
+):
+    release_files["integrations/openwebui/craft_documents_tool.py"] = header
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
+    monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
+    with pytest.raises(ValueError, match="Open WebUI"):
+        release_module.prepare_notes("v0.2.0")
+
+
+def test_matching_documents_tool_version(release_module, release_files, monkeypatch):
+    release_files["integrations/openwebui/craft_documents_tool.py"] = '"""\nversion: 0.2.0\n"""'
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
+    monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
+    assert release_module.prepare_notes("v0.2.0") == "- Example capability.\n"

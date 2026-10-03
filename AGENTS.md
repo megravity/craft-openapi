@@ -4,8 +4,8 @@ Read [PROJECT.md](PROJECT.md) for context and documentation links.
 
 ## Project Structure & Architecture
 
-- `src/craft_wrapper/`: FastAPI application factory and configuration. `api/` owns routes, validation, authentication, and public errors; `craft/` owns HTTP transport and the Space client.
-- `integrations/openwebui/craft_wrapper_tool.py`: standalone Workspace tool calling the wrapper. Keep the Craft client independent of FastAPI and Open WebUI.
+- `src/craft_wrapper/`: FastAPI application factory and configuration. `api/` owns routes, validation, authentication, and public errors; `craft/` owns HTTP transport and the Space and Multi-Document clients.
+- `integrations/openwebui/`: standalone Space and Multi-Document Workspace tools. Keep the Craft client independent of FastAPI and Open WebUI.
 - `tests/`: pytest suites and synthetic fixtures in `tests/fixtures/`.
 - `craft-docs/`: upstream reference documents; preserve them when changing implementation.
 - `scripts/build-image.sh`, `Dockerfile`, and Compose files: builds/deployment; `README.md` covers setup.
@@ -28,7 +28,7 @@ Startup requires credentials; copy `.env.example` only if `.env` is absent.
 
 ## Coding Style & Naming
 
-Use Python 3.12+, four-space indentation, type hints, and Ruff's 100-character line limit. Use `snake_case` for functions/modules and `PascalCase` for classes. Keep existing HTTP paths and explicit `craft_space_*` operation IDs stable. Separate upstream request mapping from public API validation; prefer concrete helpers over universal adapter frameworks. Prefix Open WebUI helper methods with `_` to avoid exposing them as tools.
+Use Python 3.12+, four-space indentation, type hints, and Ruff's 100-character line limit. Use `snake_case` for functions/modules and `PascalCase` for classes. Keep existing HTTP paths and explicit `craft_space_*` and `craft_documents_*` operation IDs stable. Separate upstream request mapping from public API validation; prefer concrete helpers over universal adapter frameworks. Prefix Open WebUI helper methods with `_` to avoid exposing them as tools.
 
 ## Testing Guidelines
 

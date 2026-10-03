@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from openapi_spec_validator import validate
 from pydantic import ValidationError
 
-from craft_wrapper.config import OPERATION_IDS, Settings, load_settings
+from craft_wrapper.config import SPACE_OPERATION_IDS as OPERATION_IDS
+from craft_wrapper.config import Settings, load_settings
 from craft_wrapper.main import create_app
 
 
@@ -32,10 +33,9 @@ def test_release_versions_match_package_schema_image_and_tool(settings):
     assert (
         f'LABEL org.opencontainers.image.version="{release}"' in (root / "Dockerfile").read_text()
     )
-    tool_metadata = (
-        (root / "integrations/openwebui/craft_wrapper_tool.py").read_text().split('"""')[1]
-    )
-    assert f"version: {release}" in tool_metadata.splitlines()
+    for filename in ("craft_wrapper_tool.py", "craft_documents_tool.py"):
+        tool_metadata = (root / "integrations/openwebui" / filename).read_text().split('"""')[1]
+        assert f"version: {release}" in tool_metadata.splitlines()
     assert f"## {release} — " in (root / "CHANGELOG.md").read_text()
 
 
@@ -266,6 +266,7 @@ def test_environment_overrides_dotenv(tmp_path, monkeypatch):
 def test_load_settings_resolves_required_values_from_sources(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CRAFT_SPACE_BASE_URL", raising=False)
+    monkeypatch.delenv("CRAFT_DOCUMENTS_BASE_URL", raising=False)
     monkeypatch.delenv("WRAPPER_API_TOKEN", raising=False)
     (tmp_path / ".env").write_text(
         "CRAFT_SPACE_BASE_URL=https://connect.craft.do/links/file-secret/api/v1\n"
@@ -273,6 +274,7 @@ def test_load_settings_resolves_required_values_from_sources(tmp_path, monkeypat
     )
     monkeypatch.setenv("WRAPPER_API_TOKEN", "environment-token")
     settings = load_settings()
+    assert settings.craft_space_base_url is not None
     assert settings.craft_space_base_url.get_secret_value().endswith("/links/file-secret/api/v1")
     assert settings.wrapper_api_token.get_secret_value() == "environment-token"
 
@@ -280,13 +282,11 @@ def test_load_settings_resolves_required_values_from_sources(tmp_path, monkeypat
 def test_load_settings_still_requires_credentials(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CRAFT_SPACE_BASE_URL", raising=False)
+    monkeypatch.delenv("CRAFT_DOCUMENTS_BASE_URL", raising=False)
     monkeypatch.delenv("WRAPPER_API_TOKEN", raising=False)
     with pytest.raises(RuntimeError) as raised:
         load_settings()
-    assert (
-        str(raised.value)
-        == "Invalid wrapper configuration: craft_space_base_url, wrapper_api_token"
-    )
+    assert str(raised.value) == "Invalid wrapper configuration: wrapper_api_token"
 
 
 def test_startup_failure_is_sanitized(tmp_path, monkeypatch):

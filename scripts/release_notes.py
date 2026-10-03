@@ -23,6 +23,19 @@ def tagged_file(repo: Path, tag: str, path: str) -> str:
     return result.stdout
 
 
+def tagged_tool_paths(repo: Path, tag: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", f"refs/tags/{tag}", "integrations/openwebui"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        raise ValueError("Release tag must exist")
+    return result.stdout.splitlines()
+
+
 def changelog_notes(changelog: str, version: str) -> str:
     headings = list(re.finditer(r"(?m)^## (.+)$", changelog))
     pattern = rf"{re.escape(version)} [—-] (\d{{4}}-\d{{2}}-\d{{2}})"
@@ -64,10 +77,15 @@ def prepare_notes(tag: str, repo: Path = Path(".")) -> str:
         version
     ]:
         raise ValueError("Tagged Docker image label does not match the package version")
-    tool = tagged_file(repo, tag, "integrations/openwebui/craft_wrapper_tool.py")
-    header = re.match(r'\s*"""(.*?)"""', tool, re.S)
-    if header is None or re.findall(r"^version: (\S+)$", header[1], re.M) != [version]:
-        raise ValueError("Tagged Open WebUI tool version does not match the package version")
+    paths = ["integrations/openwebui/craft_wrapper_tool.py"]
+    documents_tool = "integrations/openwebui/craft_documents_tool.py"
+    if documents_tool in tagged_tool_paths(repo, tag):
+        paths.append(documents_tool)
+    for path in paths:
+        tool = tagged_file(repo, tag, path)
+        header = re.match(r'\s*"""(.*?)"""', tool, re.S)
+        if header is None or re.findall(r"^version: (\S+)$", header[1], re.M) != [version]:
+            raise ValueError("Tagged Open WebUI tool version does not match the package version")
     return changelog_notes(tagged_file(repo, tag, "CHANGELOG.md"), version)
 
 

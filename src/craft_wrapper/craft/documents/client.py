@@ -4,18 +4,19 @@ from typing import Any
 from pydantic import BaseModel
 
 from craft_wrapper.craft import operations
-from craft_wrapper.craft.models import Block, CollectionItem, Items
-from craft_wrapper.craft.space.models import (
+from craft_wrapper.craft.documents.models import DocumentSummary
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
     CollectionSchema,
     CollectionSummary,
     DocumentSearchHit,
-    DocumentSummary,
-    Folder,
+    Items,
 )
 from craft_wrapper.craft.transport import CraftTransport
 
 
-class SpaceClient:
+class DocumentsClient:
     def __init__(self, transport: CraftTransport):
         self.transport = transport
 
@@ -23,9 +24,6 @@ class SpaceClient:
         self, model: type[M], method: str, path: str, **kwargs: Any
     ) -> M:
         return await operations.request_model(self.transport, model, method, path, **kwargs)
-
-    async def list_folders(self) -> Items[Folder]:
-        return await self._request(Items[Folder], "GET", "folders")
 
     async def list_documents(
         self, params: Mapping[str, str | bool | int | None]
@@ -37,24 +35,10 @@ class SpaceClient:
     ) -> Items[DocumentSearchHit]:
         values = dict(params)
         values["include"] = values.pop("query")
-        if "folderId" in values:
-            values["folderIds"] = values.pop("folderId")
-        if "documentId" in values:
-            values["documentIds"] = values.pop("documentId")
+        values = document_scope(values)
         return await self._request(
             Items[DocumentSearchHit], "GET", "documents/search", params=values
         )
-
-    async def create_document(
-        self, title: str, *, folder_id: str | None = None, location: str | None = None
-    ) -> DocumentSummary:
-        body: dict[str, Any] = {"documents": [{"title": title}]}
-        if folder_id is not None:
-            body["destination"] = {"folderId": folder_id}
-        elif location is not None:
-            body["destination"] = {"destination": location}
-        result = await self._request(Items[DocumentSummary], "POST", "documents", body=body)
-        return self._single(result)
 
     async def get_block(self, block_id: str, max_depth: int = 1) -> Block:
         return await operations.get_block(self.transport, block_id, max_depth)
@@ -70,9 +54,11 @@ class SpaceClient:
     async def update_block_markdown(self, block_id: str, markdown: str) -> Block:
         return await operations.update_block_markdown(self.transport, block_id, markdown)
 
-    async def list_collections(self, document_id: str | None = None) -> Items[CollectionSummary]:
+    async def list_collections(
+        self, params: Mapping[str, str | bool | int | None]
+    ) -> Items[CollectionSummary]:
         return await self._request(
-            Items[CollectionSummary], "GET", "collections", params={"documentIds": document_id}
+            Items[CollectionSummary], "GET", "collections", params=document_scope(params)
         )
 
     async def get_collection_schema(self, collection_id: str) -> CollectionSchema:
@@ -97,6 +83,14 @@ class SpaceClient:
             self.transport, collection_id, item_id, properties
         )
 
-    @staticmethod
-    def _single[M: BaseModel](result: Items[M]) -> M:
-        return operations.single(result)
+
+def document_scope(
+    params: Mapping[str, str | bool | int | None],
+) -> dict[str, str | bool | int | None]:
+    values = dict(params)
+    document_id = values.pop("documentId", None)
+    if document_id is not None:
+        values["documentIds"] = document_id
+        if values.get("documentFilterMode") is None:
+            values["documentFilterMode"] = "include"
+    return values

@@ -3,118 +3,81 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 
 from craft_wrapper.api.auth import require_token
+from craft_wrapper.api.documents_schemas import (
+    DocumentsCollectionFilters,
+    DocumentsFilters,
+    DocumentsSearchFilters,
+)
 from craft_wrapper.api.responses import ERROR_RESPONSES
 from craft_wrapper.api.schemas import (
     AddCollectionItem,
     BlockDepth,
-    CollectionFilters,
-    CreateDocument,
-    DocumentFilters,
     Identifier,
     InsertMarkdown,
     ItemDepth,
     MarkdownContent,
-    SearchFilters,
     UpdateCollectionProperties,
     UpdateMarkdown,
 )
-from craft_wrapper.craft.models import Block, CollectionItem, Items
-from craft_wrapper.craft.space.client import SpaceClient
-from craft_wrapper.craft.space.models import (
+from craft_wrapper.craft.documents.client import DocumentsClient
+from craft_wrapper.craft.documents.models import DocumentSummary
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
     CollectionSchema,
     CollectionSummary,
     DocumentSearchHit,
-    DocumentSummary,
-    Folder,
+    Items,
 )
 
 
-def get_client(request: Request) -> SpaceClient:
-    return request.app.state.space_client
+def get_client(request: Request) -> DocumentsClient:
+    return request.app.state.documents_client
 
 
-Client = Annotated[SpaceClient, Depends(get_client)]
+Client = Annotated[DocumentsClient, Depends(get_client)]
 
 
 def make_router() -> APIRouter:
     router = APIRouter(
-        prefix="/v1/space",
-        tags=["Craft Space"],
+        prefix="/v1/documents",
+        tags=["Craft Multi-Document"],
         dependencies=[Depends(require_token)],
         responses=ERROR_RESPONSES,
     )
 
     @router.get(
-        "/folders",
-        operation_id="craft_space_list_folders",
-        response_model=Items[Folder],
-        response_model_exclude_none=True,
-        summary="Discover locations and folders",
-        description="List built-in locations and the folder hierarchy with document counts. "
-        "Use folder IDs or built-in location names to narrow list_documents. "
-        "No pagination is documented.",
-    )
-    async def list_folders(client: Client):
-        return await client.list_folders()
-
-    @router.get(
         "/documents",
-        operation_id="craft_space_list_documents",
+        operation_id="craft_documents_list_documents",
         response_model=Items[DocumentSummary],
         response_model_exclude_none=True,
         summary="List document IDs and titles",
-        description="Discover documents before reading their root blocks. A document ID is "
-        "its root block ID. Choose location OR folderId; folderId lists only "
-        "direct documents, so list each descendant folder separately when needed. "
-        "Daily-note date bounds require location=daily_notes. "
-        "Ordering is unspecified; sort results client-side. "
-        "With no scope filter this returns all documents and may "
-        "be large; list_folders first. This is not content search. No pagination "
-        "is documented. Metadata is optional. Use each item's id for API calls; "
-        "clickableLink is for navigation and can contain a different documentId.",
+        description="Discover documents exposed by this Multi-Document connection, including "
+        "deleted entries marked isDeleted. Use each item's id as the root block ID for reads; "
+        "clickableLink is for navigation and may contain a different ID. Metadata is optional. "
+        "No location, folder, or date filters are supported; no pagination is documented.",
     )
-    async def list_documents(client: Client, filters: Annotated[DocumentFilters, Query()]):
+    async def list_documents(client: Client, filters: Annotated[DocumentsFilters, Query()]):
         return await client.list_documents(filters.model_dump(exclude_none=True))
 
     @router.get(
         "/documents/search",
-        operation_id="craft_space_search_documents",
+        operation_id="craft_documents_search_documents",
         response_model=Items[DocumentSearchHit],
         response_model_exclude_none=True,
         summary="Search content across documents",
-        description="Find content mentions using one plain include string. Matches can occur "
-        "inside words, rather than only whole words. Returns relevance-ranked results "
-        "with highlighted snippets, document IDs, and matching block IDs; result counts "
-        "vary and completeness is not guaranteed. No pagination is documented. "
-        "Choose at most one of location, folderId, documentId; folderId includes descendants. "
-        "Daily-note date bounds do not require a location here. Use read_markdown "
-        "to read a result's document, or get_block for IDs/hierarchy to edit. "
-        "Regex is not exposed in v1.",
+        description="Find content mentions within this connection using one plain include string. "
+        "Returns relevance-ranked snippets and matching block IDs; Craft documents top 20 "
+        "results, not an exhaustive inventory. Optional documentId can be included or excluded "
+        "with documentFilterMode; this never expands the connection's access. Use read_markdown "
+        "for reading or get_block for IDs and hierarchy. Regex and pagination are unsupported.",
     )
-    async def search_documents(client: Client, filters: Annotated[SearchFilters, Query()]):
+    async def search_documents(client: Client, filters: Annotated[DocumentsSearchFilters, Query()]):
         return await client.search_documents(filters.model_dump(exclude_none=True))
-
-    @router.post(
-        "/documents",
-        operation_id="craft_space_create_document",
-        status_code=201,
-        response_model=DocumentSummary,
-        response_model_exclude_none=True,
-        summary="Create one empty document",
-        description="Create one titled document in Unsorted (default), Templates, or a "
-        "folder discovered with list_folders. Choose folderId OR location. "
-        "Use insert_markdown with the returned ID to add content separately. "
-        "This does not create a daily note. Writes are never retried; an error "
-        "with outcomeUnknown means the document may already have been created.",
-    )
-    async def create_document(body: CreateDocument, client: Client):
-        return await client.create_document(
-            body.title, folder_id=body.folderId, location=body.location
-        )
 
     @router.get(
         "/blocks/{blockId}",
-        operation_id="craft_space_get_block",
+        operation_id="craft_documents_get_block",
         response_model=Block,
         response_model_exclude_none=True,
         summary="Read structured page content",
@@ -125,14 +88,15 @@ def make_router() -> APIRouter:
         "omits deeper descendants; -1 reads all descendants. Collection rows appear "
         "under items when returned by Craft; list_collection_items reads rows directly. "
         "Depth-limited reads preserve contentPreviewMd and itemsPreviewMd when supplied. Prefer "
-        "read_markdown for reading and summarization. Craft links are preserved.",
+        "read_markdown for reading and summarization. Craft scoped links and "
+        "invalid:out_of_scope markers are preserved.",
     )
     async def get_block(blockId: Identifier, client: Client, depth: Annotated[BlockDepth, Query()]):
         return await client.get_block(blockId, depth.maxDepth)
 
     @router.get(
         "/blocks/{blockId}/markdown",
-        operation_id="craft_space_read_markdown",
+        operation_id="craft_documents_read_markdown",
         response_model=MarkdownContent,
         summary="Read rendered Markdown",
         description="Read a document/page as Craft-rendered Markdown for reading or "
@@ -149,7 +113,7 @@ def make_router() -> APIRouter:
 
     @router.post(
         "/blocks/{pageId}/content",
-        operation_id="craft_space_insert_markdown",
+        operation_id="craft_documents_insert_markdown",
         status_code=201,
         response_model=Items[Block],
         response_model_exclude_none=True,
@@ -165,7 +129,7 @@ def make_router() -> APIRouter:
 
     @router.patch(
         "/blocks/{blockId}",
-        operation_id="craft_space_update_block_markdown",
+        operation_id="craft_documents_update_block_markdown",
         response_model=Block,
         response_model_exclude_none=True,
         summary="Update one text block's Markdown",
@@ -179,22 +143,26 @@ def make_router() -> APIRouter:
 
     @router.get(
         "/collections",
-        operation_id="craft_space_list_collections",
+        operation_id="craft_documents_list_collections",
         response_model=Items[CollectionSummary],
         response_model_exclude_none=True,
         summary="Discover existing collections",
-        description="List collections in the Space, optionally narrowed to one document. "
+        description="List collections within this connection. Include or exclude one document "
+        "with documentId "
+        "and documentFilterMode; neither expands connection access. "
         "A collection block's id can also be its collection ID. "
         "Use a returned collection ID with get_collection_schema before writing "
         "items. This does not list rows or execute stored views. No pagination "
         "is documented.",
     )
-    async def list_collections(client: Client, filters: Annotated[CollectionFilters, Query()]):
-        return await client.list_collections(filters.documentId)
+    async def list_collections(
+        client: Client, filters: Annotated[DocumentsCollectionFilters, Query()]
+    ):
+        return await client.list_collections(filters.model_dump(exclude_none=True))
 
     @router.get(
         "/collections/{collectionId}/schema",
-        operation_id="craft_space_get_collection_schema",
+        operation_id="craft_documents_get_collection_schema",
         response_model=CollectionSchema,
         response_model_exclude_none=True,
         summary="Inspect collection property keys and options",
@@ -209,7 +177,7 @@ def make_router() -> APIRouter:
 
     @router.get(
         "/collections/{collectionId}/items",
-        operation_id="craft_space_list_collection_items",
+        operation_id="craft_documents_list_collection_items",
         response_model=Items[CollectionItem],
         response_model_exclude_none=True,
         summary="Read collection items",
@@ -225,7 +193,7 @@ def make_router() -> APIRouter:
 
     @router.post(
         "/collections/{collectionId}/items",
-        operation_id="craft_space_add_collection_item",
+        operation_id="craft_documents_add_collection_item",
         status_code=201,
         response_model=CollectionItem,
         response_model_exclude_none=True,
@@ -240,7 +208,7 @@ def make_router() -> APIRouter:
 
     @router.patch(
         "/collections/{collectionId}/items/{itemId}",
-        operation_id="craft_space_update_collection_item_properties",
+        operation_id="craft_documents_update_collection_item_properties",
         response_model=CollectionItem,
         response_model_exclude_none=True,
         summary="Update selected collection-item properties",

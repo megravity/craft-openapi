@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 from pydantic import SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-OPERATION_IDS = frozenset(
+SPACE_OPERATION_IDS = frozenset(
     {
         "craft_space_list_folders",
         "craft_space_list_documents",
@@ -23,39 +23,71 @@ OPERATION_IDS = frozenset(
     }
 )
 
+SPACE_READ_OPERATION_IDS = frozenset(
+    {
+        "craft_space_list_folders",
+        "craft_space_list_documents",
+        "craft_space_search_documents",
+        "craft_space_get_block",
+        "craft_space_read_markdown",
+        "craft_space_list_collections",
+        "craft_space_get_collection_schema",
+        "craft_space_list_collection_items",
+    }
+)
+
+DOCUMENTS_OPERATION_IDS = frozenset(
+    {
+        "craft_documents_list_documents",
+        "craft_documents_search_documents",
+        "craft_documents_get_block",
+        "craft_documents_read_markdown",
+        "craft_documents_insert_markdown",
+        "craft_documents_update_block_markdown",
+        "craft_documents_list_collections",
+        "craft_documents_get_collection_schema",
+        "craft_documents_list_collection_items",
+        "craft_documents_add_collection_item",
+        "craft_documents_update_collection_item_properties",
+    }
+)
+DOCUMENTS_READ_OPERATION_IDS = frozenset(
+    {
+        "craft_documents_list_documents",
+        "craft_documents_search_documents",
+        "craft_documents_get_block",
+        "craft_documents_read_markdown",
+        "craft_documents_list_collections",
+        "craft_documents_get_collection_schema",
+        "craft_documents_list_collection_items",
+    }
+)
+OPERATION_IDS = SPACE_OPERATION_IDS | DOCUMENTS_OPERATION_IDS
 OPERATION_PRESETS = {
     "full": OPERATION_IDS,
-    "read_only": frozenset(
-        {
-            "craft_space_list_folders",
-            "craft_space_list_documents",
-            "craft_space_search_documents",
-            "craft_space_get_block",
-            "craft_space_read_markdown",
-            "craft_space_list_collections",
-            "craft_space_get_collection_schema",
-            "craft_space_list_collection_items",
-        }
-    ),
+    "read_only": SPACE_READ_OPERATION_IDS | DOCUMENTS_READ_OPERATION_IDS,
 }
 
 
-def _parse_enabled_operations(value: str | None) -> frozenset[str]:
+def _parse_enabled_operations(value: str | None, available: frozenset[str]) -> frozenset[str]:
     if value is None:
-        return OPERATION_IDS
+        return available
     preset = re.sub(r"[\s-]+", "_", value.strip().casefold())
     if preset in OPERATION_PRESETS:
-        return OPERATION_PRESETS[preset]
+        return OPERATION_PRESETS[preset] & available
     entries = [entry.strip() for entry in value.split(",")]
     if not all(entries) or set(entries) - OPERATION_IDS:
         raise ValueError("Expected full, read_only, or a list of valid operation IDs")
+    if set(entries) - available:
+        raise ValueError("Operation IDs require their configured Craft connection")
     return frozenset(entries)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
-    craft_space_base_url: SecretStr
+    craft_space_base_url: SecretStr | None = None
+    craft_documents_base_url: SecretStr | None = None
     wrapper_api_token: SecretStr
     craft_timeout_seconds: float = 30
     craft_connect_timeout_seconds: float = 5
@@ -66,9 +98,11 @@ class Settings(BaseSettings):
         # Required fields can come from settings sources rather than constructor arguments.
         super().__init__(**values)
 
-    @field_validator("craft_space_base_url")
+    @field_validator("craft_space_base_url", "craft_documents_base_url")
     @classmethod
-    def validate_craft_url(cls, value: SecretStr) -> SecretStr:
+    def validate_craft_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
         raw = value.get_secret_value()
         if any(c.isspace() or ord(c) < 32 for c in raw) or "?" in raw or "#" in raw:
             raise ValueError("Craft URL must not contain whitespace, a query, or a fragment")
@@ -125,17 +159,29 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_operations(self) -> "Settings":
-        _parse_enabled_operations(self.wrapper_enabled_operations)
+        if self.craft_space_base_url is None and self.craft_documents_base_url is None:
+            raise ValueError("At least one Craft connection must be configured")
+        _parse_enabled_operations(self.wrapper_enabled_operations, self.available_operations)
         return self
 
     @property
     def enabled_operations(self) -> frozenset[str]:
-        return _parse_enabled_operations(self.wrapper_enabled_operations)
+        return _parse_enabled_operations(self.wrapper_enabled_operations, self.available_operations)
+
+    @property
+    def available_operations(self) -> frozenset[str]:
+        return (SPACE_OPERATION_IDS if self.craft_space_base_url is not None else frozenset()) | (
+            DOCUMENTS_OPERATION_IDS if self.craft_documents_base_url is not None else frozenset()
+        )
 
     @property
     def secrets(self) -> tuple[str, ...]:
-        url = self.craft_space_base_url.get_secret_value()
-        return (url, urlsplit(url).path.split("/")[2], self.wrapper_api_token.get_secret_value())
+        values = [self.wrapper_api_token.get_secret_value()]
+        for connection in (self.craft_space_base_url, self.craft_documents_base_url):
+            if connection is not None:
+                url = connection.get_secret_value()
+                values.extend((url, urlsplit(url).path.split("/")[2]))
+        return tuple(values)
 
 
 def load_settings() -> Settings:

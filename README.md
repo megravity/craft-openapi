@@ -3,9 +3,9 @@
 > [!CAUTION]
 > This repo is purely vibe-coded. If you somehow find it, use at your own risk.
 
-A small FastAPI service exposing 13 selected [Craft](https://www.craft.do/) **Space** operations as a generated OpenAPI 3.1 HTTP API. It is suitable for Open WebUI tool servers and other OpenAPI consumers.
+A small FastAPI service exposing 13 selected [Craft](https://www.craft.do/) **Space** operations and 11 **Multi-Document** operations as a generated OpenAPI 3.1 HTTP API. It is suitable for Open WebUI tool servers and other OpenAPI consumers.
 
-Every data request shares one server-configured Craft connection. The wrapper has its own bearer token. The Craft client does not depend on FastAPI or Open WebUI.
+Configure Space, Multi-Document, or both. Each adapter uses its own server-configured Craft connection; it never falls back to another connection. The wrapper has one shared bearer token. The Craft client does not depend on FastAPI or Open WebUI.
 
 For project context and agent handoff, start with [PROJECT.md](PROJECT.md). Contributor instructions are in [AGENTS.md](AGENTS.md).
 
@@ -15,7 +15,7 @@ For project context and agent handoff, start with [PROJECT.md](PROJECT.md). Cont
 - [Updating](#updating)
 - [Versioning](#versioning)
 - [Configuration](#configuration)
-- [Operations](#operations)
+- [Operations](#operations): [Space](#space), [Multi-Document](#multi-document)
 - [Errors and write outcomes](#errors-and-write-outcomes)
 - [Open WebUI](#open-webui): [Python tool](#workspace-python-tool), [OpenAPI server](#openapi-tool-server)
 - [Tests and checks](#tests-and-checks)
@@ -37,7 +37,7 @@ uv sync --locked --dev
 cp .env.example .env
 ```
 
-Edit `.env` and replace both placeholders with your Craft Space API URL and a separately generated wrapper token. `.env` is ignored by Git and excluded from Docker. No credentials are included in the schema.
+Edit `.env` with at least one Craft connection URL and a separately generated wrapper token. Keep `CRAFT_SPACE_BASE_URL` for Space, add `CRAFT_DOCUMENTS_BASE_URL` for Multi-Document, or configure both. Remove unused connection settings entirely, including their placeholder values; blank supplied URLs are invalid. `.env` is ignored by Git and excluded from Docker. No credentials are included in the schema.
 
 ```sh
 uv run --locked uvicorn craft_wrapper.main:create_app --factory --reload --no-access-log
@@ -62,7 +62,7 @@ curl -H "Authorization: Bearer $WRAPPER_API_TOKEN" \
 
 ### Docker Compose
 
-Requires Docker Engine and the Docker Compose plugin. Copy `.env.example` to `.env` if you have not already done so, replace the two credential placeholders, and set `WRAPPER_NETWORK` to an **existing Docker network also attached to your tool client**. You can find that network in the client's container configuration. Omit unused optional variables instead of setting them to empty strings.
+Requires Docker Engine and the Docker Compose plugin. Copy `.env.example` to `.env` if you have not already done so, configure at least one connection URL and the wrapper token, and set `WRAPPER_NETWORK` to an **existing Docker network also attached to your tool client**. You can find that network in the client's container configuration. Omit unused optional variables instead of setting them to empty strings.
 
 ```sh
 cp .env.example .env  # First-time setup only; do not overwrite an existing .env.
@@ -88,7 +88,7 @@ In Portainer:
 
 1. Select the same Docker environment where you built the image.
 2. Open **Stacks → Add stack → Web editor**, and paste **`docker-compose.portainer.yml`** from the clone. This file uses the local image with `pull_policy: never`; it contains no build context or host mounts.
-3. Add stack variables `CRAFT_SPACE_BASE_URL`, `WRAPPER_API_TOKEN`, and `WRAPPER_NETWORK`. The network must already exist and also be attached to the tool client. Optionally set `WRAPPER_ENABLED_OPERATIONS` to `read_only`, `full`, or an explicit operation-ID list. You can also add timeout settings or `WRAPPER_PUBLIC_URL`; omit unused optional settings entirely.
+3. Add stack variables `WRAPPER_API_TOKEN` and `WRAPPER_NETWORK`, plus `CRAFT_SPACE_BASE_URL`, `CRAFT_DOCUMENTS_BASE_URL`, or both. Omit the unused connection variable entirely. The network must already exist and also be attached to the tool client. Optionally set `WRAPPER_ENABLED_OPERATIONS` to `read_only`, `full`, or an explicit operation-ID list. You can also add timeout settings or `WRAPPER_PUBLIC_URL`; omit unused optional settings entirely.
 4. Keep any **Re-pull image** option disabled and deploy. Check the container's health and logs.
 
 The clone's `.env` is not automatically read by Portainer. Enter variables in Portainer or use its **Load variables from .env file** feature. No credential file is mounted into the container. See [Portainer's stack and environment-variable documentation](https://docs.portainer.io/user/docker/stacks/add).
@@ -158,19 +158,19 @@ For a standalone `docker run` container, rebuild with the script, stop the old c
 
 ## Versioning
 
-This iteration is **0.2.0**. Releases use Git tags such as `v0.2.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` URL identifies the HTTP contract independently of the project release number.
+The latest release baseline is **0.2.0**. Multi-Document support is currently **Unreleased**, intended for the next capability release, **0.3.0**. Releases use Git tags such as `v0.2.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` and `/v1/documents` prefixes identify the HTTP contract independently of the project release number.
 
-OpenAPI `info.version` comes from the installed package version. The standalone Open WebUI tool includes its release version in the metadata header. Docker images carry `org.opencontainers.image.version`; `craft-openapi-wrapper:local` remains the mutable tag used by the Portainer stack. Check the running container's release with:
+OpenAPI `info.version` comes from the installed package version. Both standalone Open WebUI tools include the release version in the metadata header. Docker images carry `org.opencontainers.image.version`; `craft-openapi-wrapper:local` remains the mutable tag used by the Portainer stack. Check the running container's release with:
 
 ```sh
 docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontainers.image.version" }}'
 ```
 
-For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and tool metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
+For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and both tools' metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
 
 ### GitHub releases
 
-[The release workflow](.github/workflows/release.yml) runs on pushed `v*` tags and accepts only `vMAJOR.MINOR.PATCH`, such as `v0.3.0`. Ordinary branch pushes do not publish releases. It verifies the **tagged** package, lockfile, Docker label, and tool version, then publishes a GitHub release using that tag's matching dated `CHANGELOG.md` entry. Missing/mismatched metadata or empty notes fail the run. Existing releases are left unchanged when rerun.
+[The release workflow](.github/workflows/release.yml) runs on pushed `v*` tags and accepts only `vMAJOR.MINOR.PATCH`, such as `v0.3.0`. Ordinary branch pushes do not publish releases. It verifies the **tagged** package, lockfile, Docker label, and tool versions present in that tag, then publishes a GitHub release using that tag's matching dated `CHANGELOG.md` entry. Missing/mismatched metadata or empty notes fail the run. Existing releases are left unchanged when rerun.
 
 After preparing a release commit and running the checks:
 
@@ -192,11 +192,12 @@ Environment variables override `.env`. Startup rejects missing credentials, plac
 
 | Variable                        | Default / meaning                                                                                                                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CRAFT_SPACE_BASE_URL`          | Required `https://connect.craft.do/links/SECRET/api/v1` URL; the link itself is a credential. Only this HTTPS host/path is accepted; redirects and ambient HTTP proxies are disabled. |
+| `CRAFT_SPACE_BASE_URL`          | Optional Space connection: `https://connect.craft.do/links/SECRET/api/v1` URL; the link itself is a credential. Only this HTTPS host/path is accepted; redirects and ambient HTTP proxies are disabled. |
+| `CRAFT_DOCUMENTS_BASE_URL`      | Optional Multi-Document secret-link URL with the same validation. At least one connection is required; omit unused connections. |
 | `WRAPPER_API_TOKEN`             | Required independent, nonempty bearer token without whitespace.                                                                                                                       |
 | `CRAFT_TIMEOUT_SECONDS`         | `30`; overall upstream deadline and read/write/pool phase limits.                                                                                                                     |
 | `CRAFT_CONNECT_TIMEOUT_SECONDS` | `5`; upstream connection limit, also bounded by the overall deadline.                                                                                                                 |
-| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all 13 operations. `read_only`: 8 read operations. Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries are errors; duplicates are harmless. |
+| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (13 Space, 11 Multi-Document). `read_only`: their reads (8 Space, 7 Multi-Document). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
 | `WRAPPER_PUBLIC_URL`            | Optional non-secret HTTP(S) origin, without a path/query/credentials; sets OpenAPI `servers`. Otherwise consumers use the schema origin.                                              |
 
 Use a preset for common configurations:
@@ -205,7 +206,7 @@ Use a preset for common configurations:
 WRAPPER_ENABLED_OPERATIONS=read_only
 ```
 
-`read_only` includes folders, documents, content search, structured blocks, Markdown, collections, collection schemas, and collection items. All five write operations are disabled. `full` enables all implemented v1 operations, including writes; it does not enable deferred Craft capabilities.
+`read_only` includes discovery, content search, structured blocks, Markdown, collection schemas, and collection items for the configured adapters. Space also includes folder discovery. All mutations are disabled. `full` enables all implemented v1 operations, including writes; it does not enable deferred Craft capabilities.
 
 Preset names are case-insensitive; `Read Only` and `read-only` also work. Set one preset or an explicit list, rather than mixing presets and operation IDs. Explicit operation IDs remain case-sensitive. For a narrower selection:
 
@@ -213,13 +214,17 @@ Preset names are case-insensitive; `Read Only` and `read-only` also work. Set on
 WRAPPER_ENABLED_OPERATIONS=craft_space_list_documents,craft_space_get_block,craft_space_read_markdown
 ```
 
-Selection takes effect at startup. Recreate the Docker container after changing its environment, or restart the Python process. Disabled operations are absent from both routing and OpenAPI and return `404`, including when another enabled method shares the same path. This is a deployment-level allowlist, not per-user authorization. Anyone with the wrapper token shares its configured Space access.
+Selection takes effect at startup. Recreate the Docker container after changing its environment, or restart the Python process. Disabled operations are absent from both routing and OpenAPI and return `404`, including when another enabled method shares the same path. This is a deployment-level allowlist, not per-user authorization. Anyone with the wrapper token can call enabled operations on every configured adapter. The Multi-Document prefix is not a separate permission boundary for that token when Space is also enabled; use a Multi-Document-only instance for restricted access.
 
 ---
 
 ## Operations
 
-All paths below start with `/v1/space`. Reads/updates return `200`; creates/insertion return `201`. All responses are JSON, including rendered Markdown.
+Reads/updates return `200`; creates/insertion return `201`. All responses are JSON, including rendered Markdown.
+
+### Space
+
+All paths below start with `/v1/space`.
 
 | Method and path                                    | Stable operation ID                             | Behavior                                                                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -253,6 +258,47 @@ Collection reads allow dynamic JSON property values. Untitled rows can omit `tit
 
 Schema option lists accept the documented string labels and observed `{name,color?}` objects, preserving the supplied representation. Title-property metadata (`contentPropDetails`) is optional because Craft may omit it. Property type strings such as the documented `select` and observed `singleSelect` are preserved without normalization. Single-select item values can be strings; multi-select values can be arrays. Both read shapes are preserved, while array writes remain unsupported. Existing row values are not a substitute for a schema: they do not reveal unused options or the full property contract.
 
+### Multi-Document
+
+All paths below start with `/v1/documents`. These routes use only `CRAFT_DOCUMENTS_BASE_URL`, preserving the documents exposed by that connection. Craft filters links and relations; returned `invalid:out_of_scope` markers are preserved. Neither include/exclude filters nor resource IDs expand access.
+
+| Method and path | Stable operation ID |
+|---|---|
+| `GET /documents` | `craft_documents_list_documents` |
+| `GET /documents/search` | `craft_documents_search_documents` |
+| `GET /blocks/{blockId}` | `craft_documents_get_block` |
+| `GET /blocks/{blockId}/markdown` | `craft_documents_read_markdown` |
+| `POST /blocks/{pageId}/content` | `craft_documents_insert_markdown` |
+| `PATCH /blocks/{blockId}` | `craft_documents_update_block_markdown` |
+| `GET /collections` | `craft_documents_list_collections` |
+| `GET /collections/{collectionId}/schema` | `craft_documents_get_collection_schema` |
+| `GET /collections/{collectionId}/items` | `craft_documents_list_collection_items` |
+| `POST /collections/{collectionId}/items` | `craft_documents_add_collection_item` |
+| `PATCH /collections/{collectionId}/items/{itemId}` | `craft_documents_update_collection_item_properties` |
+
+Document listing accepts only `fetchMetadata=false`; entries include `id`, `title`, and `isDeleted`. Deleted entries remain visible. Optional metadata includes `createdAt`, `lastModifiedAt`, and `clickableLink`. Use `id` for API reads, not an ID extracted from the navigation link.
+
+Search accepts required `query`, optional `documentId`, `documentFilterMode=include|exclude`, and `fetchBlocks=false`. Collection discovery accepts optional `documentId` and the same filter mode. Supplying an ID defaults to include; supplying a mode without an ID returns `422`. A singular public `documentId` maps to upstream `documentIds`. Search is relevance-limited (Craft documents top 20), not an exhaustive inventory; the wrapper preserves returned results without truncating them or inventing pagination.
+
+Space-specific location, folder, and date filters are rejected. Multi-Document has no wrapper folder or document-creation route. Block depth defaults to `1`, collection-item depth to `0`, and `-1` requests all descendants. Markdown insertion and block updates use the same request bodies as Space. Collection writes remain singleton, string-valued operations; complex reads and scope markers are preserved.
+
+For a **Multi-Document-only** instance, remove `CRAFT_SPACE_BASE_URL` and set:
+
+```dotenv
+CRAFT_DOCUMENTS_BASE_URL=https://connect.craft.do/links/REPLACE_ME/api/v1
+WRAPPER_API_TOKEN=REPLACE_ME
+WRAPPER_ENABLED_OPERATIONS=read_only
+```
+
+Replace both placeholders. For combined access, configure both connection URLs instead. Example authenticated reads:
+
+```sh
+curl -H "Authorization: Bearer $WRAPPER_API_TOKEN" \
+  'http://127.0.0.1:8000/v1/documents/documents?fetchMetadata=true'
+curl -H "Authorization: Bearer $WRAPPER_API_TOKEN" \
+  'http://127.0.0.1:8000/v1/documents/documents/search?query=example&documentId=DOCUMENT_ID&documentFilterMode=exclude'
+```
+
 ---
 
 ## Errors and write outcomes
@@ -285,15 +331,15 @@ A write failure after submission can leave its outcome uncertain, including malf
 
 ### Workspace Python tool
 
-The standalone [Craft wrapper tool](integrations/openwebui/craft_wrapper_tool.py) explicitly calls this HTTP wrapper for all 13 operations. It does not connect directly to Craft and does not require the wrapper Python package inside Open WebUI. Its structure follows Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
+Choose the standalone [Space tool](integrations/openwebui/craft_wrapper_tool.py) for its 13 operations or the [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) for its 11 operations. Both explicitly call this HTTP wrapper. It does not connect directly to Craft and does not require the wrapper Python package inside Open WebUI. Its structure follows Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
 
-1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of `integrations/openwebui/craft_wrapper_tool.py` into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
+1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of the selected tool file into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
 2. Open the tool's **Valves** settings and configure the values below. The token field uses Open WebUI's [password input convention](https://docs.openwebui.com/features/extensibility/plugin/development/valves/); masking the input does not itself encrypt stored values. Restrict tool access to the intended users.
-3. Enable the tool in a chat with a model that supports tool calling. Native function calling is recommended. Ask it to list folders first; the returned HTTP status should be `200` and `response.items` should contain the wrapper's result.
+3. Enable the tool in a chat with a model that supports tool calling. Native function calling is recommended. Ask the Space tool to list folders or the Multi-Document tool to list documents; the returned HTTP status should be `200` and `response.items` should contain the wrapper's result.
 
 | Valve | Value |
 |---|---|
-| `WRAPPER_URL` | Wrapper origin reachable from Open WebUI, such as `http://craft-wrapper:8000` on a shared Docker network. No `/v1/space` suffix. |
+| `WRAPPER_URL` | Wrapper origin reachable from Open WebUI, such as `http://craft-wrapper:8000` on a shared Docker network. No adapter path suffix such as `/v1/space` or `/v1/documents`. |
 | `WRAPPER_API_TOKEN` | The wrapper's `WRAPPER_API_TOKEN`, without `Bearer `. Never use the Craft connection URL here. |
 | `TIMEOUT_SECONDS` | Default `45`, covering the wrapper's default 30-second upstream deadline plus network overhead. |
 
@@ -315,9 +361,9 @@ Nested query/body keys are forwarded without silently removing unknown fields. F
 
 Each result contains `request` (method, path, serialized query), `statusCode`, `requestId`, and the unchanged JSON `response`. This distinguishes a wrapper rejection from a tool connection/decoding failure. Authentication headers and write bodies are not included in request evidence. Wrapper error codes, retry guidance, and uncertain-write flags are preserved. The tool does not follow redirects or retry requests; failed writes after submission are marked uncertain. Results exceeding 9 MiB are rejected rather than truncated.
 
-All 13 functions remain visible in this Python tool. `WRAPPER_ENABLED_OPERATIONS` still enforces permissions on the server; disabled operations return `404`. Use `read_only` on the wrapper to prohibit writes. Choose either this tool or the OpenAPI registration below for a chat to avoid duplicate operations.
+Each Python tool keeps its static function list: 13 for Space, 11 for Multi-Document. To use Multi-Document search, call `craft_documents_search_documents` with `parameters` containing `query` and optionally `documentId`, `documentFilterMode`, and `fetchBlocks`. Install each tool separately if both adapters are needed. `WRAPPER_ENABLED_OPERATIONS` still enforces permissions on the server; disabled operations return `404`. Use `read_only` on the wrapper to prohibit writes. Choose either this tool or the OpenAPI registration below for a chat to avoid duplicate operations.
 
-To update the installed tool after pulling repository changes, replace its code in the Open WebUI editor with the current file and save it. Check its Valves settings afterward. Rebuilding the wrapper image does not update the separately installed Open WebUI tool. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the folder-list smoke check above.
+To update the installed tool after pulling repository changes, replace its code in the Open WebUI editor with the current file and save it. Check its Valves settings afterward. Rebuilding the wrapper image does not update the separately installed Open WebUI tool. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
 
 ### OpenAPI tool server
 
@@ -340,9 +386,9 @@ uvx basedpyright
 
 `pyproject.toml` sets standard type checking for Pyright and basedpyright, using the project's `.venv` and Python 3.12. The editor and CLI use the same configuration; basedpyright's stricter annotation/style rules are not enabled by this preset. `uvx` runs the checker separately from application dependencies. See [basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/).
 
-All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 13 routes, discovery/editing and collection workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
+All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 24 routes across both adapters, discovery/editing and collection workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
 
-Response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Fixture generation never edits the source docs.
+Space response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Multi-Document tests use generic synthetic examples of documented responses, including deleted documents and scoped links. Fixture generation never edits the source docs.
 
 Live Craft validation is separate from automated tests. Read-only probes reproduced schema option objects, missing title metadata, and calendar-date string values. A separate write probe verified an existing collection row's Date update, read it back, restored the original value, and confirmed all properties matched their original values. Regression cases use generic synthetic values, not captured personal schemas. Secret-link-only authentication worked for these requests. No additional Craft auth headers or OAuth flow were documented or implemented, and select writes were not live-tested.
 
@@ -350,7 +396,7 @@ Live Craft validation is separate from automated tests. Read-only probes reprodu
 
 ## Architecture
 
-`api/` owns HTTP models, validation, auth, error translation, and tool descriptions. `craft/transport.py` owns bounded asynchronous HTTP, decoding, deadlines, and sanitized failures. `craft/space/client.py` owns upstream query/body names, typed parsing, and singleton adaptation. `config.py` owns environment settings and operation selection.
+`api/` owns HTTP models, validation, auth, error translation, and tool descriptions. `craft/transport.py` owns bounded asynchronous HTTP, decoding, deadlines, and sanitized failures. `craft/space/client.py` and `craft/documents/client.py` own their upstream query names and adapter methods. `craft/operations.py` shares matching block/collection mappings and response parsing; document summaries and filters stay separate. `config.py` owns environment settings and operation selection.
 
 All three local docs were compared before design. Space has 44 documented method/path pairs, Multi-Document 33, Daily Notes 36; 31 are shared. Overlap does not imply matching semantics:
 
@@ -361,7 +407,7 @@ All three local docs were compared before design. Space has 44 documented method
 - Daily Notes has date defaults/search results and narrower task scopes; Space task `all` is not the union of active/upcoming/inbox/logbook.
 - Views are stored definitions, not executed queries. Reminders have conditional availability/ownership and cursor pagination; neither is exposed in v1.
 
-Reuse transport/errors and proven common models across future adapters; extract further helpers only when a second adapter proves matching contracts. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
+Space and Multi-Document reuse transport/errors and matching block/collection helpers and models. Keep scope-specific discovery and filters in their adapters; share additional helpers only when contracts match. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
 
 V1 deliberately excludes deletion/movement, folder writes, collection creation/schema mutation/views, tasks, comments, reminders, uploads, and whiteboards. Other documented gaps remain explicit: examples use inconsistent identifier terminology and collection-type representations; array query serialization and regex claims are ambiguous; list pagination and mutation atomicity are unspecified. The wrapper follows documented example field names, accepts single-value filters, preserves read type strings, and omits those uncertain capabilities.
 
@@ -370,10 +416,6 @@ V1 deliberately excludes deletion/movement, folder writes, collection creation/s
 ## Roadmap
 
 These additions are planned; their routes and configuration are not implemented yet.
-
-### Multi-Document API
-
-Add a dedicated adapter and route prefix for a configured Multi-Document connection. Preserve selected-document scope, include/exclude filters, and document-specific search targeting. Give it its own connection settings; unavailable access must never fall back to the broader Space connection.
 
 ### Daily Notes API
 
