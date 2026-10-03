@@ -18,8 +18,8 @@ Run from the repository root:
 uv sync --locked --dev                         # Install locked dependencies
 uv run --locked uvicorn craft_wrapper.main:create_app --factory --reload --no-access-log
 uv run --locked pytest -q                      # Run automated tests
-uv run --locked ruff check src tests integrations
-uv run --locked ruff format src tests integrations
+uv run --locked ruff check src tests integrations scripts
+uv run --locked ruff format src tests integrations scripts
 uvx basedpyright                               # Check types using pyproject.toml
 PORTAINER_WEBHOOK_URL= ./scripts/build-image.sh # Build without triggering deployment
 ```

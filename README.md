@@ -168,6 +168,22 @@ docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontaine
 
 For an exact source release, check out its Git tag before building. When preparing a release, bump `pyproject.toml`, run `uv lock`, update the Dockerfile label and tool metadata, and add a changelog entry. Commit those changes and tag that commit. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
 
+### GitHub releases
+
+[The release workflow](.github/workflows/release.yml) runs on pushed `v*` tags and accepts only `vMAJOR.MINOR.PATCH`, such as `v0.3.0`. Ordinary branch pushes do not publish releases. It verifies the **tagged** package, lockfile, Docker label, and tool version, then publishes a GitHub release using that tag's matching dated `CHANGELOG.md` entry. Missing/mismatched metadata or empty notes fail the run. Existing releases are left unchanged when rerun.
+
+After preparing a release commit and running the checks:
+
+```sh
+git tag -a v0.3.0 -m "Release 0.3.0"  # Example: only after setting version 0.3.0.
+git push origin main
+git push origin v0.3.0
+```
+
+Commit and push the workflow before relying on automatic publishing. For an older tag such as `v0.2.0`, push the tag if needed, then select **Actions → Release → Run workflow**, use the default branch, and enter the existing tag. This manual path reads release metadata/notes from the tag without moving it. Manual workflows must exist on the default branch; see [GitHub's workflow trigger documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+
+The workflow uses GitHub's provided token with `contents: write`; no personal access token or Craft/Portainer credentials are required. Actions must be enabled and repository policy must permit this permission. It creates a published release with notes, using [`gh release create --verify-tag`](https://cli.github.com/manual/gh_release_create). It does not bump versions, create tags, run the application tests, publish Docker images/packages, or trigger deployments. Run the release checks before tagging. Prerelease suffixes are not supported by this initial workflow.
+
 ---
 
 ## Configuration
@@ -317,8 +333,8 @@ Open WebUI can import the OpenAPI 3.x schema and call ordinary HTTP operations. 
 
 ```sh
 uv run --locked pytest -q
-uv run --locked ruff check src tests integrations
-uv run --locked ruff format --check src tests integrations
+uv run --locked ruff check src tests integrations scripts
+uv run --locked ruff format --check src tests integrations scripts
 uvx basedpyright
 ```
 

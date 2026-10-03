@@ -54,6 +54,6 @@ For a release:
 1. Update the version in `pyproject.toml`, the Dockerfile's `org.opencontainers.image.version` label, and the Open WebUI tool's metadata header.
 2. Run `uv lock` and `uv sync --locked --dev`; OpenAPI `info.version` comes from the installed package metadata. Add a dated changelog entry and update release references in the documentation.
 3. Run tests, lint, formatting checks, and type checks. The version-consistency test checks package, OpenAPI, image-label, tool, and changelog alignment.
-4. Commit the release and create an annotated `vX.Y.Z` tag on that commit. Keep existing release tags unchanged; subsequent commits belong to future releases.
+4. Commit the release and create an annotated `vX.Y.Z` tag on that commit. Keep existing release tags unchanged; subsequent commits belong to future releases. Push the commit and tag when ready to publish: [the GitHub release workflow](README.md#github-releases) validates tagged metadata and publishes that tag's changelog notes. Use its manual trigger for older tags.
 
 `craft-openapi-wrapper:local` is a mutable Docker tag, not an immutable release identifier. Check out a Git release tag before building an exact source release, and inspect the running image's version label as described in [README versioning](README.md#versioning). Commit/tag creation, publishing, and deployment are separate actions.

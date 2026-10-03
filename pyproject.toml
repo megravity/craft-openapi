@@ -25,7 +25,7 @@ packages = ["src/craft_wrapper"]
 testpaths = ["tests"]
 
 [tool.pyright]
-include = ["src", "tests", "integrations"]
+include = ["src", "tests", "integrations", "scripts"]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
 venvPath = "."
