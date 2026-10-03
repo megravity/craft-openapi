@@ -7,6 +7,8 @@ A small FastAPI service exposing 13 selected [Craft](https://www.craft.do/) **Sp
 
 Every data request shares one server-configured Craft connection. The wrapper has its own bearer token. The Craft client does not depend on FastAPI or Open WebUI.
 
+For project context and agent handoff, start with [PROJECT.md](PROJECT.md). Contributor instructions are in [AGENTS.md](AGENTS.md).
+
 ## Contents
 
 - [Installation](#installation): [Python](#python--local-development), [Docker Compose](#docker-compose), [Portainer](#portainer-with-a-cloned-repository-and-local-image), [Docker image](#docker-image-without-compose)
