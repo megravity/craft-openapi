@@ -1,14 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-03
 
 - Add 11 Multi-Document operations and a dedicated standalone Open WebUI tool, preserving selected-document scope, deletion status, and include/exclude filtering.
 - Support Space-only, Multi-Document-only, and combined instances with separate connection clients and configured-adapter allowlists; share the existing wrapper token.
 - Share matching block/collection mappings, response models, and errors without changing Space paths or operation IDs.
 - Update Compose, configuration, installation, and handoff documentation; validate both tools' versions while retaining older-tag release support.
 - Verify adapter isolation, strict inputs, route/schema availability, and document/collection workflows using mocked Craft responses.
-
-This capability is intended for the next minor release, `0.3.0`; the release baseline remains `0.2.0` until release preparation.
+- Extend the roadmap with multiple connections, profile-bound credentials, and an Open WebUI profile factory and management flow; these remain planned capabilities.
 
 ## 0.2.0 — 2026-10-02
 

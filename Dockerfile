@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.12.13 AS uv
 FROM python:3.12-slim
-LABEL org.opencontainers.image.version="0.2.0"
+LABEL org.opencontainers.image.version="0.3.0"
 
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app

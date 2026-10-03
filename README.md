@@ -158,7 +158,7 @@ For a standalone `docker run` container, rebuild with the script, stop the old c
 
 ## Versioning
 
-The latest release baseline is **0.2.0**. Multi-Document support is currently **Unreleased**, intended for the next capability release, **0.3.0**. Releases use Git tags such as `v0.2.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` and `/v1/documents` prefixes identify the HTTP contract independently of the project release number.
+The current release version is **0.3.0**, adding Multi-Document support alongside Space. Releases use Git tags such as `v0.3.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space` and `/v1/documents` prefixes identify the HTTP contract independently of the project release number.
 
 OpenAPI `info.version` comes from the installed package version. Both standalone Open WebUI tools include the release version in the metadata header. Docker images carry `org.opencontainers.image.version`; `craft-openapi-wrapper:local` remains the mutable tag used by the Portainer stack. Check the running container's release with:
 
@@ -423,6 +423,8 @@ Add a dedicated adapter and route prefix for a configured Daily Notes connection
 
 ### Permission-based routes for LLM tools
 
+Support multiple named Multi-Document connections within one wrapper instance. Each access profile selects a Craft connection, permitted operations, and a profile-bound wrapper credential. Different agents/tools can use different document scopes; multiple profiles can share a connection with different permissions. Give each profile a dedicated base URL and OpenAPI schema. Changing the URL must not let a profile's credential access another profile or the broader Space connection; never fall back between connections.
+
 Expose permission-specific tool-server URLs, starting with an explicit read-only entry point, for example `/v1/space/read-only` with its own `/openapi.json`. A tool client could register this URL to discover and call only reads. Add narrower profiles for selected operation groups, such as content editing or collection-item updates, so different tools can receive different permissions on the same deployment.
 
 Each profile must expose only its allowed HTTP routes and generate OpenAPI from those same routes. Enforce the scope on the server and bind credentials to permitted profiles, so a read-only tool cannot gain write access by calling a different URL. The deployment-wide operation allowlist remains an upper bound on every profile.
@@ -432,6 +434,18 @@ Use the generated OpenAPI operation IDs to communicate available operations to c
 Open WebUI's OpenAPI integration can discover operations from the scoped schema. The Workspace Python tool has a separate constraint: its predefined function list is stored when the tool is saved. Capability discovery informs the model but does not automatically remove disabled functions from that list. Evaluate generating a reduced Python tool from a scoped schema during installation/update if hiding unavailable functions is required; avoid modifying Open WebUI internals or maintaining a second permission list.
 
 The existing `WRAPPER_ENABLED_OPERATIONS` presets apply to the entire deployment and use one shared token. They do not yet provide separate permission URLs or credentials per tool. Existing Space paths and operation IDs will remain stable when these scoped entry points are added.
+
+### Open WebUI profile factory and management (evaluation)
+
+Build the factory for existing profiles first: an authorized user selects a profile, enters a tool name, previews its document scope and enabled operations, and clicks **Create tool**. Generate a dedicated tool from a trusted base definition using the profile's OpenAPI schema; expose only its enabled operations and configure its URL and credential separately from the generated source. Support regenerating the tool when the base definition or profile changes.
+
+Current upstream Open WebUI provides [dynamic Valves dropdowns](https://docs.openwebui.com/features/extensibility/plugin/development/valves/#dynamic-options) for profile selection and [authenticated tool creation/update and Valves endpoints](https://github.com/open-webui/open-webui/blob/main/backend/open_webui/routers/tools.py) for saving tool instances. These establish the building blocks for a custom factory; verify compatibility with the installed Open WebUI version before implementation.
+
+Add profile creation and management in a later step, including assigning a Craft Multi-Document connection and choosing permissions. This requires a wrapper administration API and persistent server-side configuration. Evaluate a user-triggered Open WebUI Action with an [interactive interface](https://docs.openwebui.com/features/extensibility/plugin/development/rich-ui/); embedded interfaces are sandboxed and must not assume access to the Open WebUI login session. If direct integration is impractical, use a small wrapper-hosted management interface that can be opened from Open WebUI, avoiding configuration-file edits on the deployment host.
+
+Keep profile administration separate from ordinary LLM-callable tools, with explicit administrative authorization and durable server-side configuration. Keep connection secrets and wrapper credentials out of model context, generated tool source, logs, and exported definitions. Ordinary tool requests must never supply arbitrary upstream URLs or create profiles. The wrapper remains responsible for enforcing document scope and operation permissions.
+
+Acceptance checks should cover selecting an existing profile, creating a tool with the matching operation set, creating a profile through the management flow, and updating a generated tool. Verify that read-only tools cannot write and that credentials cannot cross profiles, including when two profiles share a Craft connection. Profile revocation must stop access even if a tool retains an older definition.
 
 ### Reusable block and collection shapes (evaluation)
 

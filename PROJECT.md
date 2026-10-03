@@ -20,9 +20,9 @@ Treat running code and tests as evidence of implemented behavior. Upstream examp
 
 ## Current implementation
 
-The release baseline is **0.2.0**, tagged `v0.2.0`. It provides 13 operations under `/v1/space`: folders and documents, content search, structured/Markdown reads, empty document creation, Markdown insertion/update, and discovery/schema/row operations for existing collections.
+The current release version is **0.3.0**. It provides 13 operations under `/v1/space`: folders and documents, content search, structured/Markdown reads, empty document creation, Markdown insertion/update, and discovery/schema/row operations for existing collections.
 
-The working tree also includes **Unreleased** Multi-Document support: 11 operations under `/v1/documents`, intended for `0.3.0`. Configure `CRAFT_SPACE_BASE_URL`, `CRAFT_DOCUMENTS_BASE_URL`, or both; at least one is required. Each adapter uses a separate client and never falls back to another connection. One independent wrapper bearer token covers all enabled routes. `WRAPPER_ENABLED_OPERATIONS` selects all configured operations, their reads (8 Space, 7 Multi-Document), or an explicit operation list. IDs for absent connections fail startup. Disabled routes are removed from routing and generated OpenAPI 3.1. Public health checks do not contact Craft or verify credentials.
+Multi-Document support adds 11 operations under `/v1/documents`. Configure `CRAFT_SPACE_BASE_URL`, `CRAFT_DOCUMENTS_BASE_URL`, or both; at least one is required. Each adapter uses a separate client and never falls back to another connection. One independent wrapper bearer token covers all enabled routes. `WRAPPER_ENABLED_OPERATIONS` selects all configured operations, their reads (8 Space, 7 Multi-Document), or an explicit operation list. IDs for absent connections fail startup. Disabled routes are removed from routing and generated OpenAPI 3.1. Public health checks do not contact Craft or verify credentials.
 
 Collection writes accept string-valued properties only; reads preserve dynamic JSON values. IDs are opaque: use API IDs from discovery, not IDs embedded in navigation links. Selected endpoints have no documented pagination. There are no automatic retries or transactional guarantees; write errors can report `outcomeUnknown=true`.
 
