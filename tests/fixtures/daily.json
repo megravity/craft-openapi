@@ -1,0 +1,16 @@
+{
+  "block": {
+    "id": "daily-root",
+    "type": "page",
+    "markdown": "Daily note",
+    "content": [{"id": "daily-text", "type": "text", "markdown": "[Scoped](invalid:out_of_scope)"}],
+    "itemsPreviewMd": "<itemsPreview>Example</itemsPreview>"
+  },
+  "search": {
+    "items": [{"dailyNoteDate": "2026-10-03", "markdown": "Match", "blockIds": ["daily-text"], "blocks": [{"id": "daily-text", "type": "text", "markdown": "Match"}]}]
+  },
+  "collections": {"items": [{"id": "daily-collection", "name": "Example", "itemCount": 1, "dailyNoteDate": "2026-10-03"}]},
+  "schema": {"name": "Example", "properties": [{"key": "status", "name": "Status", "type": "select", "options": ["Todo", {"name": "Done", "color": "green"}]}]},
+  "item": {"id": "row", "title": "Example", "properties": {"status": "Todo", "tags": ["First", "Second"], "number": 3, "relation": {"id": "out-of-scope", "url": "invalid:out_of_scope"}}, "content": [{"id": "row-text", "type": "text", "markdown": "Nested"}]},
+  "task": {"id": "task-slug", "markdown": "Example", "taskInfo": {"state": "todo", "scheduleDate": "2026-10-03", "deadlineDate": "2026-10-05"}}
+}

@@ -14,9 +14,9 @@ from pydantic import ValidationError, create_model
 from craft_wrapper.main import create_app
 
 
-@pytest.fixture(params=["space", "documents"])
+@pytest.fixture(params=["space", "documents", "daily"])
 def tool_module(request) -> Any:
-    filename = "craft_wrapper_tool.py" if request.param == "space" else "craft_documents_tool.py"
+    filename = "craft_" + request.param + "_tool.py"
     path = Path(__file__).parents[1] / "integrations/openwebui" / filename
     spec = importlib.util.spec_from_file_location("craft_owui_test_" + request.param, path)
     assert spec is not None and spec.loader is not None
@@ -36,14 +36,26 @@ def tool(tool_module):
 
 
 def adapter(tool) -> str:
+    if hasattr(tool, "craft_daily_get_note"):
+        return "daily"
     return "space" if hasattr(tool, "craft_space_list_documents") else "documents"
 
 
-def operation(tool, name):
+def operation(tool, name: str):
+    if adapter(tool) == "daily":
+        name = {"list_documents": "get_note", "search_documents": "search_notes"}.get(name, name)
     return getattr(tool, "craft_" + adapter(tool) + "_" + name)
 
 
 def tool_app(settings, tool, upstream):
+    if adapter(tool) == "daily":
+        settings = settings.model_copy(
+            update={
+                "craft_daily_base_url": settings.craft_space_base_url,
+                "craft_space_base_url": None,
+            }
+        )
+        return create_app(settings, daily_upstream_transport=httpx.MockTransport(upstream))
     if adapter(tool) == "documents":
         settings = settings.model_copy(
             update={
@@ -173,7 +185,7 @@ def test_all_operation_mappings(
     tool_module, tool, monkeypatch, name, arguments, method, path, query, body
 ):
     if not hasattr(tool, "craft_" + adapter(tool) + "_" + name):
-        pytest.skip("Space-only operation")
+        pytest.skip("Operation is not implemented by this adapter")
     calls = []
 
     def handler(request):
@@ -423,7 +435,7 @@ def test_private_request_logging_suppressed_and_filter_removed(
 def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == (13 if adapter(tool) == "space" else 11)
+    assert len(public) == {"space": 13, "documents": 11, "daily": 17}[adapter(tool)]
     assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
     method = operation(tool, "list_documents")
     hints = get_type_hints(method)
@@ -449,7 +461,11 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
                 200, json={"items": [{"id": "root", "title": "Example", "isDeleted": False}]}
             )
         if path == "blocks" and request.method == "GET":
-            assert request.url.params["id"] == "root"
+            assert dict(request.url.params) == (
+                {"date": "today", "maxDepth": "1"}
+                if "date" in request.url.params
+                else {"id": "root", "maxDepth": "1"}
+            )
             return httpx.Response(
                 200,
                 json={
@@ -482,7 +498,11 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
                         {
                             "id": "collection",
                             "name": "Example",
-                            "documentId": "root",
+                            **(
+                                {"dailyNoteDate": "2026-10-03"}
+                                if adapter(tool) == "daily"
+                                else {"documentId": "root"}
+                            ),
                             "itemCount": 0,
                         }
                     ]
@@ -523,7 +543,11 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
                 lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs),
             )
             documents = await operation(tool, "list_documents")()
-            root = documents["response"]["items"][0]["id"]
+            root = (
+                documents["response"]["id"]
+                if adapter(tool) == "daily"
+                else documents["response"]["items"][0]["id"]
+            )
             content = await operation(tool, "get_block")(root)
             assert content["response"]["content"][0]["id"] == "text"
             inserted = await operation(tool, "insert_markdown")(root, {"markdown": "Inserted"})
@@ -533,7 +557,9 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
                 new_id, {"markdown": "Updated"}
             )
             assert updated["response"]["markdown"] == "Updated"
-            collections = await operation(tool, "list_collections")({"documentId": root})
+            collections = await operation(tool, "list_collections")(
+                {"startDate": "today"} if adapter(tool) == "daily" else {"documentId": root}
+            )
             collection = collections["response"]["items"][0]["id"]
             schema = await operation(tool, "get_collection_schema")(collection)
             key = schema["response"]["properties"][0]["key"]
@@ -545,6 +571,170 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
                 collection, row["response"]["id"], {"properties": {key: "Done"}}
             )
             assert updated_row["response"]["properties"] == {"status": "Done"}
+
+    asyncio.run(run())
+    assert len(calls) == 8
+
+
+@pytest.mark.parametrize("tool_module", ["daily"], indirect=True)
+@pytest.mark.parametrize(
+    "name,arguments,method,path,query,body",
+    [
+        ("get_note", {}, "GET", "/notes", {}, None),
+        (
+            "read_note_markdown",
+            {"parameters": {"date": "yesterday", "maxDepth": -1}},
+            "GET",
+            "/notes/markdown",
+            {"date": "yesterday", "maxDepth": "-1"},
+            None,
+        ),
+        (
+            "insert_note_markdown",
+            {"body": {"markdown": "New"}, "parameters": {"date": "tomorrow"}},
+            "POST",
+            "/notes/content",
+            {"date": "tomorrow"},
+            {"markdown": "New"},
+        ),
+        (
+            "search_notes",
+            {"parameters": {"query": "a & b", "fetchBlocks": True}},
+            "GET",
+            "/notes/search",
+            {"query": "a & b", "fetchBlocks": "true"},
+            None,
+        ),
+        (
+            "list_collections",
+            {"parameters": {"startDate": "today"}},
+            "GET",
+            "/collections",
+            {"startDate": "today"},
+            None,
+        ),
+        (
+            "list_tasks",
+            {"parameters": {"scope": "logbook"}},
+            "GET",
+            "/tasks",
+            {"scope": "logbook"},
+            None,
+        ),
+        (
+            "add_task",
+            {"body": {"markdown": "Task", "target": "daily_note"}},
+            "POST",
+            "/tasks",
+            {},
+            {"markdown": "Task", "target": "daily_note"},
+        ),
+        (
+            "update_task",
+            {"taskId": "task", "body": {"state": "done"}},
+            "PATCH",
+            "/tasks/task",
+            {},
+            {"state": "done"},
+        ),
+        ("delete_task", {"taskId": "task"}, "DELETE", "/tasks/task", {}, None),
+    ],
+)
+def test_daily_specific_tool_mappings(
+    tool_module, tool, monkeypatch, name, arguments, method, path, query, body
+):
+    test_all_operation_mappings(
+        tool_module, tool, monkeypatch, name, arguments, method, path, query, body
+    )
+
+
+@pytest.mark.parametrize("tool_module", ["daily"], indirect=True)
+def test_daily_date_content_and_task_workflows(tool_module, tool, settings, monkeypatch):
+    calls = []
+    task = None
+    text = "Original"
+
+    def upstream(request):
+        nonlocal task, text
+        calls.append(request)
+        path = request.url.path.split("/api/v1/")[1]
+        body = json.loads(request.content) if request.content else {}
+        if path == "blocks":
+            if request.method == "GET":
+                assert dict(request.url.params) == {"date": "today", "maxDepth": "1"}
+                return httpx.Response(200, json={"id": "daily-root", "type": "page", "content": []})
+            if request.method == "POST":
+                assert body == {
+                    "markdown": "Inserted",
+                    "position": {"date": "today", "position": "end"},
+                }
+                text = body["markdown"]
+            else:
+                assert body == {"blocks": [{"id": "new-text", "markdown": "Updated"}]}
+                text = body["blocks"][0]["markdown"]
+            return httpx.Response(
+                200, json={"items": [{"id": "new-text", "type": "text", "markdown": text}]}
+            )
+        assert path == "tasks"
+        if request.method == "POST":
+            assert body == {
+                "tasks": [
+                    {
+                        "markdown": "Example",
+                        "location": {"type": "dailyNote", "date": "today"},
+                        "taskInfo": {"scheduleDate": "tomorrow"},
+                    }
+                ]
+            }
+            task = {"id": "native-task", "markdown": "Example", "taskInfo": {"state": "todo"}}
+            return httpx.Response(200, json={"items": [task]})
+        if request.method == "PUT":
+            assert body == {"tasksToUpdate": [{"id": "native-task", "taskInfo": {"state": "done"}}]}
+            assert task is not None
+            task["taskInfo"] = {"state": "done"}
+            return httpx.Response(
+                200, json={"items": [{"id": "native-task", "taskInfo": {"state": "done"}}]}
+            )
+        if request.method == "DELETE":
+            assert body == {"idsToDelete": ["native-task"]}
+            task = None
+            return httpx.Response(200, json={"items": [{"id": "native-task"}]})
+        return httpx.Response(200, json={"items": [] if task is None else [task]})
+
+    original = httpx.AsyncClient
+    app = tool_app(settings, tool, upstream)
+
+    async def run():
+        async with app.router.lifespan_context(app):
+            monkeypatch.setattr(
+                tool_module.httpx,
+                "AsyncClient",
+                lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs),
+            )
+            note = await tool.craft_daily_get_note()
+            assert note["response"]["id"] == "daily-root"
+            inserted = await tool.craft_daily_insert_note_markdown({"markdown": "Inserted"})
+            assert inserted["statusCode"] == 201
+            updated = await tool.craft_daily_update_block_markdown(
+                inserted["response"]["items"][0]["id"], {"markdown": "Updated"}
+            )
+            assert updated["response"]["markdown"] == "Updated"
+            created = await tool.craft_daily_add_task(
+                {"markdown": "Example", "target": "daily_note", "scheduleDate": "tomorrow"}
+            )
+            assert created["statusCode"] == 201
+            task_id = created["response"]["id"]
+            updated_task = await tool.craft_daily_update_task(task_id, {"state": "done"})
+            assert updated_task["response"] == {"id": "native-task", "taskInfo": {"state": "done"}}
+            listed = await tool.craft_daily_list_tasks({"scope": "logbook"})
+            assert listed["response"]["items"][0]["taskInfo"]["state"] == "done"
+            deleted = await tool.craft_daily_delete_task(task_id)
+            assert deleted["response"] == {"id": "native-task"}
+            empty = await tool.craft_daily_list_tasks({"scope": "inbox"})
+            assert empty["response"]["items"] == []
+            invalid = await tool.craft_daily_update_task(task_id, {"scheduleDate": None})
+            assert invalid["statusCode"] == 422
+            assert "body" not in invalid["request"]
 
     asyncio.run(run())
     assert len(calls) == 8

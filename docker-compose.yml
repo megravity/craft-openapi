@@ -10,6 +10,7 @@ services:
       # Configure at least one connection; absent adapters have no routes.
       - CRAFT_SPACE_BASE_URL
       - CRAFT_DOCUMENTS_BASE_URL
+      - CRAFT_DAILY_BASE_URL
       - WRAPPER_API_TOKEN=${WRAPPER_API_TOKEN:?Set an independent wrapper bearer token}
       - CRAFT_TIMEOUT_SECONDS=${CRAFT_TIMEOUT_SECONDS:-30}
       - CRAFT_CONNECT_TIMEOUT_SECONDS=${CRAFT_CONNECT_TIMEOUT_SECONDS:-5}

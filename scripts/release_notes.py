@@ -87,10 +87,21 @@ def validate_release(
         version
     ]:
         raise ValueError("Release Docker image label does not match the package version")
-    paths = ["integrations/openwebui/craft_wrapper_tool.py"]
-    documents_tool = "integrations/openwebui/craft_documents_tool.py"
-    if documents_tool in tool_paths:
-        paths.append(documents_tool)
+    present = set(tool_paths)
+    recognized = {
+        "integrations/openwebui/craft_wrapper_tool.py",
+        "integrations/openwebui/craft_space_tool.py",
+        "integrations/openwebui/craft_documents_tool.py",
+        "integrations/openwebui/craft_daily_tool.py",
+    }
+    if not present.intersection(
+        {
+            "integrations/openwebui/craft_wrapper_tool.py",
+            "integrations/openwebui/craft_space_tool.py",
+        }
+    ):
+        raise ValueError("Release must contain a Space Open WebUI tool")
+    paths = sorted(present & recognized)
     for path in paths:
         tool = read_file(path)
         header = re.match(r'\s*"""(.*?)"""', tool, re.S)

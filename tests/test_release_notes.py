@@ -151,3 +151,48 @@ def test_matching_documents_tool_version(release_module, release_files, monkeypa
     monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
     monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
     assert release_module.prepare_notes("v0.2.0") == "- Example capability.\n"
+
+
+@pytest.mark.parametrize("space_name", ["craft_wrapper_tool.py", "craft_space_tool.py"])
+@pytest.mark.parametrize(
+    "extra_tools",
+    [[], ["craft_documents_tool.py"], ["craft_documents_tool.py", "craft_daily_tool.py"]],
+)
+def test_historical_and_current_tool_layouts(
+    release_module, release_files, monkeypatch, space_name, extra_tools
+):
+    header = release_files.pop("integrations/openwebui/craft_wrapper_tool.py")
+    for name in [space_name, *extra_tools]:
+        release_files["integrations/openwebui/" + name] = header
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
+    monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
+    assert release_module.prepare_notes("v0.2.0") == "- Example capability.\n"
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "craft_wrapper_tool.py",
+        "craft_space_tool.py",
+        "craft_documents_tool.py",
+        "craft_daily_tool.py",
+    ],
+)
+def test_every_recognized_tool_present_must_match(
+    release_module, release_files, monkeypatch, filename
+):
+    for name in ("craft_space_tool.py", "craft_documents_tool.py", "craft_daily_tool.py"):
+        release_files["integrations/openwebui/" + name] = '"""\nversion: 0.2.0\n"""\n'
+    release_files["integrations/openwebui/" + filename] = '"""\nversion: 0.3.0\n"""\n'
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
+    monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
+    with pytest.raises(ValueError, match="Open WebUI tool version"):
+        release_module.prepare_notes("v0.2.0")
+
+
+def test_missing_space_tool_rejected(release_module, release_files, monkeypatch):
+    release_files.pop("integrations/openwebui/craft_wrapper_tool.py")
+    monkeypatch.setattr(release_module, "tagged_tool_paths", lambda repo, tag: list(release_files))
+    monkeypatch.setattr(release_module, "tagged_file", lambda repo, tag, name: release_files[name])
+    with pytest.raises(ValueError, match="Space Open WebUI tool"):
+        release_module.prepare_notes("v0.2.0")

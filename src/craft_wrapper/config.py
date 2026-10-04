@@ -62,10 +62,35 @@ DOCUMENTS_READ_OPERATION_IDS = frozenset(
         "craft_documents_list_collection_items",
     }
 )
-OPERATION_IDS = SPACE_OPERATION_IDS | DOCUMENTS_OPERATION_IDS
+DAILY_READ_OPERATION_IDS = frozenset(
+    {
+        "craft_daily_get_note",
+        "craft_daily_read_note_markdown",
+        "craft_daily_get_block",
+        "craft_daily_read_markdown",
+        "craft_daily_search_notes",
+        "craft_daily_list_collections",
+        "craft_daily_get_collection_schema",
+        "craft_daily_list_collection_items",
+        "craft_daily_list_tasks",
+    }
+)
+DAILY_OPERATION_IDS = DAILY_READ_OPERATION_IDS | frozenset(
+    {
+        "craft_daily_insert_note_markdown",
+        "craft_daily_insert_markdown",
+        "craft_daily_update_block_markdown",
+        "craft_daily_add_collection_item",
+        "craft_daily_update_collection_item_properties",
+        "craft_daily_add_task",
+        "craft_daily_update_task",
+        "craft_daily_delete_task",
+    }
+)
+OPERATION_IDS = SPACE_OPERATION_IDS | DOCUMENTS_OPERATION_IDS | DAILY_OPERATION_IDS
 OPERATION_PRESETS = {
     "full": OPERATION_IDS,
-    "read_only": SPACE_READ_OPERATION_IDS | DOCUMENTS_READ_OPERATION_IDS,
+    "read_only": SPACE_READ_OPERATION_IDS | DOCUMENTS_READ_OPERATION_IDS | DAILY_READ_OPERATION_IDS,
 }
 
 
@@ -88,6 +113,7 @@ class Settings(BaseSettings):
 
     craft_space_base_url: SecretStr | None = None
     craft_documents_base_url: SecretStr | None = None
+    craft_daily_base_url: SecretStr | None = None
     wrapper_api_token: SecretStr
     craft_timeout_seconds: float = 30
     craft_connect_timeout_seconds: float = 5
@@ -98,7 +124,7 @@ class Settings(BaseSettings):
         # Required fields can come from settings sources rather than constructor arguments.
         super().__init__(**values)
 
-    @field_validator("craft_space_base_url", "craft_documents_base_url")
+    @field_validator("craft_space_base_url", "craft_documents_base_url", "craft_daily_base_url")
     @classmethod
     def validate_craft_url(cls, value: SecretStr | None) -> SecretStr | None:
         if value is None:
@@ -159,7 +185,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_operations(self) -> "Settings":
-        if self.craft_space_base_url is None and self.craft_documents_base_url is None:
+        if all(
+            connection is None
+            for connection in (
+                self.craft_space_base_url,
+                self.craft_documents_base_url,
+                self.craft_daily_base_url,
+            )
+        ):
             raise ValueError("At least one Craft connection must be configured")
         _parse_enabled_operations(self.wrapper_enabled_operations, self.available_operations)
         return self
@@ -170,14 +203,24 @@ class Settings(BaseSettings):
 
     @property
     def available_operations(self) -> frozenset[str]:
-        return (SPACE_OPERATION_IDS if self.craft_space_base_url is not None else frozenset()) | (
-            DOCUMENTS_OPERATION_IDS if self.craft_documents_base_url is not None else frozenset()
+        return (
+            (SPACE_OPERATION_IDS if self.craft_space_base_url is not None else frozenset())
+            | (
+                DOCUMENTS_OPERATION_IDS
+                if self.craft_documents_base_url is not None
+                else frozenset()
+            )
+            | (DAILY_OPERATION_IDS if self.craft_daily_base_url is not None else frozenset())
         )
 
     @property
     def secrets(self) -> tuple[str, ...]:
         values = [self.wrapper_api_token.get_secret_value()]
-        for connection in (self.craft_space_base_url, self.craft_documents_base_url):
+        for connection in (
+            self.craft_space_base_url,
+            self.craft_documents_base_url,
+            self.craft_daily_base_url,
+        ):
             if connection is not None:
                 url = connection.get_secret_value()
                 values.extend((url, urlsplit(url).path.split("/")[2]))

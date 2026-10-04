@@ -33,7 +33,7 @@ def test_release_versions_match_package_schema_image_and_tool(settings):
     assert (
         f'LABEL org.opencontainers.image.version="{release}"' in (root / "Dockerfile").read_text()
     )
-    for filename in ("craft_wrapper_tool.py", "craft_documents_tool.py"):
+    for filename in ("craft_space_tool.py", "craft_documents_tool.py", "craft_daily_tool.py"):
         tool_metadata = (root / "integrations/openwebui" / filename).read_text().split('"""')[1]
         assert f"version: {release}" in tool_metadata.splitlines()
     assert f"## {release} — " in (root / "CHANGELOG.md").read_text()

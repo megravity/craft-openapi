@@ -11,8 +11,9 @@ from pathlib import Path
 from scripts.release_notes import TAG_PATTERN, changelog_notes, validate_release
 
 TOOL_PATHS = (
-    "integrations/openwebui/craft_wrapper_tool.py",
+    "integrations/openwebui/craft_space_tool.py",
     "integrations/openwebui/craft_documents_tool.py",
+    "integrations/openwebui/craft_daily_tool.py",
 )
 RELEASE_PATHS = (
     "pyproject.toml",

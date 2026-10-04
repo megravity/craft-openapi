@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException
 
+from craft_wrapper.api.daily import make_router as make_daily_router
 from craft_wrapper.api.documents import make_router as make_documents_router
 from craft_wrapper.api.errors import (
     RequestMiddleware,
@@ -18,6 +19,7 @@ from craft_wrapper.api.errors import (
 )
 from craft_wrapper.api.space import make_router as make_space_router
 from craft_wrapper.config import Settings, load_settings
+from craft_wrapper.craft.daily.client import DailyClient
 from craft_wrapper.craft.documents.client import DocumentsClient
 from craft_wrapper.craft.errors import CraftError, redact
 from craft_wrapper.craft.space.client import SpaceClient
@@ -43,6 +45,7 @@ def create_app(
     *,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
     documents_upstream_transport: httpx.AsyncBaseTransport | None = None,
+    daily_upstream_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings if settings is not None else load_settings()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -95,6 +98,13 @@ def create_app(
                             documents_upstream_transport,
                         )
                     )
+                if settings.craft_daily_base_url is not None:
+                    app.state.daily_client = DailyClient(
+                        await connection(
+                            settings.craft_daily_base_url.get_secret_value(),
+                            daily_upstream_transport,
+                        )
+                    )
                 yield
         finally:
             http_logger.removeFilter(secret_filter)
@@ -105,7 +115,8 @@ def create_app(
         title="Craft HTTP tools",
         version=version("craft-openapi-wrapper"),
         lifespan=lifespan,
-        description="Selected Craft Space and Multi-Document operations. Each configured "
+        description="Selected Craft Space, Multi-Document, and Daily Notes "
+        "operations. Each configured "
         "adapter uses its own connection; all data routes require the wrapper bearer token. "
         "No automatic retries or fallback between connections.",
         servers=[{"url": settings.wrapper_public_url}] if settings.wrapper_public_url else [],
@@ -118,7 +129,7 @@ def create_app(
     app.exception_handler(RequestValidationError)(validation_error_handler)
     app.exception_handler(HTTPException)(http_error_handler)
     app.state.disabled_routes = []
-    for router in (make_space_router(), make_documents_router()):
+    for router in (make_space_router(), make_documents_router(), make_daily_router()):
         app.state.disabled_routes.extend(
             route
             for route in router.routes
