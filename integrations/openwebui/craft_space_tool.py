@@ -1,7 +1,7 @@
 """
 title: Craft Space HTTP Wrapper
 description: Explicit HTTP calls to the configured Craft wrapper, with request evidence.
-version: 0.3.0
+version: 0.4.0
 requirements: httpx
 """
 

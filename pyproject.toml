@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "craft-openapi-wrapper"
-version = "0.3.0"
+version = "0.4.0"
 description = "A small, tool-friendly OpenAPI HTTP wrapper for Craft Space, Multi-Document, and Daily Notes APIs"
 requires-python = ">=3.12"
 dependencies = [

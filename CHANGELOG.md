@@ -2,8 +2,10 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-04
+
 - Add 17 Daily Notes operations and a standalone Open WebUI tool, including date-based content, scoped collection items, and native task listing/creation/update/deletion. Support all seven connection combinations with independent clients and configured-adapter allowlists.
-- Rename the Space tool source to `craft_space_tool.py` without changing functions or Valves; extend release preparation to all three tools and retain historical-tag filename compatibility. The next capability release is expected to be 0.4.0.
+- Rename the Space tool source to `craft_space_tool.py` without changing functions or Valves; extend release preparation to all three tools and retain historical-tag filename compatibility.
 - Add `./scripts/prepare-release.sh` to promote reviewed changelog notes and align package, lockfile, Docker, Open WebUI tool, and documentation versions. Committing, tagging, and publishing remain separate steps.
 
 ## 0.3.0 — 2026-10-03

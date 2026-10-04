@@ -158,9 +158,7 @@ For a standalone `docker run` container, rebuild with the script, stop the old c
 
 ## Versioning
 
-The current release version is **0.3.0**, adding Multi-Document support alongside Space. Releases use Git tags such as `v0.3.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space`, `/v1/documents`, and `/v1/daily` prefixes identify the HTTP contract independently of the project release number.
-
-The working tree also includes **unreleased Daily Notes support**; the next capability release is expected to be **0.4.0**. Release metadata remains at 0.3.0 until release preparation.
+The current release version is **0.4.0**, adding Daily Notes support alongside Space and Multi-Document. Releases use Git tags such as `v0.4.0` and are recorded in [CHANGELOG.md](CHANGELOG.md). Minor releases add capabilities; patch releases fix defects. While the project is below 1.0, any breaking changes must be called out in the changelog. The `/v1/space`, `/v1/documents`, and `/v1/daily` prefixes identify the HTTP contract independently of the project release number.
 
 OpenAPI `info.version` comes from the installed package version. All three standalone Open WebUI tools include the release version in the metadata header. Docker images carry `org.opencontainers.image.version`; `craft-openapi-wrapper:local` remains the mutable tag used by the Portainer stack. Check the running container's release with:
 
@@ -486,7 +484,7 @@ These additions are planned; their routes and configuration are not implemented 
 
 ### Additional Craft operations
 
-Daily Notes content, existing collection items, and native task operations are implemented in the working tree. Future additions include Space task operations, other deletion/movement operations, collection creation/schema writes, comments, reminders, uploads, and whiteboards. Implement each against its adapter’s documented scope; do not expose Daily Notes task behavior through Space implicitly.
+Daily Notes content, existing collection items, and native task operations are available in 0.4.0. Future additions include Space task operations, other deletion/movement operations, collection creation/schema writes, comments, reminders, uploads, and whiteboards. Implement each against its adapter’s documented scope; do not expose Daily Notes task behavior through Space implicitly.
 
 ### Permission-based routes for LLM tools
 
