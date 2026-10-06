@@ -16,6 +16,7 @@ For project context and agent handoff, start with [PROJECT.md](PROJECT.md). Cont
 - [Versioning](#versioning)
 - [Configuration](#configuration)
 - [Operations](#operations): [Space](#space), [Multi-Document](#multi-document), [Daily Notes](#daily-notes)
+- [API coverage matrix](API_COVERAGE.md)
 - [Errors and write outcomes](#errors-and-write-outcomes)
 - [Open WebUI](#open-webui): [Python tool](#workspace-python-tool), [OpenAPI server](#openapi-tool-server)
 - [Tests and checks](#tests-and-checks)
@@ -484,7 +485,22 @@ These additions are planned; their routes and configuration are not implemented 
 
 ### Additional Craft operations
 
-Daily Notes content, existing collection items, and native task operations are available in 0.4.0. Future additions include Space task operations, other deletion/movement operations, collection creation/schema writes, comments, reminders, uploads, and whiteboards. Implement each against its adapter’s documented scope; do not expose Daily Notes task behavior through Space implicitly.
+Target coverage of every currently documented operation across the Space, Multi-Document, and Daily Notes APIs. Daily Notes content, existing collection items, and native task operations are available in 0.4.0. Remaining additions include:
+
+- Space task listing, creation, updates, and deletion, preserving its broader task scopes.
+- Document, block, and collection-item deletion, plus documented movement operations.
+- Space folder creation, deletion, and movement.
+- Collection creation and schema replacement; collection-view listing, creation, updates, deletion, and active-view selection. Views remain stored configuration, not executed queries.
+- Connection information and search within a document/page (`GET /blocks/search`), with each adapter’s documented selectors.
+- Comments, reminders (including their explicit cursor pagination), uploads, and whiteboard creation and element operations.
+
+Implement each operation only for adapters that document it. Preserve connection isolation and scope markers; do not expose Daily Notes task behavior through Space implicitly. Keep existing paths and operation IDs stable, and update operation presets, generated OpenAPI, and the corresponding Open WebUI tools as capabilities are added.
+
+Maintain the [API coverage matrix](API_COVERAGE.md) against the [local API references](craft-docs/), recording the reference date, each adapter’s upstream method/path, wrapper operation IDs, supported parameters and request/response shapes, verification, and remaining limitations. Classify entries as implemented, partial, deferred, or not applicable. Refresh the references against Craft’s official documentation before implementation; new upstream operations require a new coverage review.
+
+Track operation coverage separately from complete contract support. Existing endpoints intentionally limit block writes to Markdown-focused inputs, collection-property writes to strings, mutations to single targets, search filters, and collection-schema output formats. Evaluate missing documented inputs and representations explicitly; retain and document useful tool-oriented adaptations. Resolve ambiguous contracts through verification rather than inventing behavior.
+
+Operation coverage is complete when every applicable documented method/path has a tested wrapper equivalent. Full contract support additionally requires verifying all documented input/output variants and resolving partial entries; endpoint presence alone is insufficient. Use mocked mapping, validation, scope-isolation, error, and OpenAPI tests, with separately authorized live checks for uncertain upstream behavior.
 
 ### Permission-based routes for LLM tools
 

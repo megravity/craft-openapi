@@ -11,6 +11,7 @@ Read [AGENTS.md](AGENTS.md) for contributor instructions, then use this map:
 | [README.md](README.md) | Installation, configuration, endpoint contract, deployment updates, and troubleshooting context. |
 | [Open WebUI setup](README.md#open-webui) | Native OpenAPI registration and the standalone Python Workspace tool. |
 | [Roadmap](README.md#roadmap) | Proposed work; these capabilities are not implemented. |
+| [API coverage matrix](API_COVERAGE.md) | Per-adapter endpoint inventory, public mappings, contract gaps, and verification evidence. |
 | [CHANGELOG.md](CHANGELOG.md) | Release history. |
 | [Space API reference](craft-docs/space-api-docs.md) | Upstream contracts for the implemented adapter. |
 | [Multi-Document reference](craft-docs/documents-api-docs.md) | Implemented adapter's restricted document scope. |
