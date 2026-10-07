@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_RESPONSE_BYTES = 9 * 1024 * 1024
 CONFIRMATION_TIMEOUT_SECONDS = 120
+UI_EVENT_TIMEOUT_SECONDS = 5
 
 
 class _WrapperRequestLogFilter(logging.Filter):
@@ -213,6 +214,29 @@ class Tools:
             "response": {"error": error},
         }
 
+    async def _confirmation_failure(
+        self, method: str, path: str, code: str, message: str, event_emitter
+    ) -> dict[str, Any]:
+        result = self._blocked(method, path, code, message)
+        if event_emitter is not None:
+            try:
+                await asyncio.wait_for(
+                    event_emitter(
+                        {
+                            "type": "status",
+                            "data": {
+                                "description": f"Nothing deleted. {message}",
+                                "done": True,
+                                "hidden": False,
+                            },
+                        }
+                    ),
+                    timeout=UI_EVENT_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                pass  # UI delivery failure must preserve the original no-mutation result.
+        return result
+
     async def _capabilities(self, valves) -> dict[str, Any]:
         if valves.WRAPPER_PROFILE:
             return await self._http_request("GET", "/capabilities", valves=valves)
@@ -251,6 +275,7 @@ class Tools:
         *,
         operation_id: str,
         event_call=None,
+        event_emitter=None,
     ) -> dict[str, Any]:
         valves = self.valves.model_copy(deep=True)
         try:
@@ -300,11 +325,12 @@ class Tools:
                 )
         if method == "DELETE":
             if event_call is None:
-                return self._blocked(
+                return await self._confirmation_failure(
                     method,
                     path,
                     "tool_confirmation_required",
                     "Deletion requires a live Open WebUI confirmation dialog.",
+                    event_emitter,
                 )
             parts = path.split("/")
             try:
@@ -342,11 +368,12 @@ class Tools:
                 if preview["statusCode"] != 200 or not isinstance(label, str):
                     raise ValueError("Unreadable target")
             except (KeyError, TypeError, ValueError, StopIteration, IndexError, AttributeError):
-                return self._blocked(
+                return await self._confirmation_failure(
                     method,
                     path,
                     "tool_preview_unavailable",
                     "Could not read the exact deletion target; nothing was deleted.",
+                    event_emitter,
                 )
             context = "".join(f"\n{key}: {value}" for key, value in (parameters or {}).items())
             prompt = {
@@ -362,19 +389,38 @@ class Tools:
                 confirmed = await asyncio.wait_for(
                     event_call(prompt), timeout=CONFIRMATION_TIMEOUT_SECONDS
                 )
-            except Exception:
-                return self._blocked(
+            except TimeoutError:
+                return await self._confirmation_failure(
                     method,
                     path,
                     "tool_confirmation_unavailable",
-                    "Confirmation failed or timed out; nothing was deleted.",
+                    "Confirmation timed out; nothing was deleted. Do not automatically retry.",
+                    event_emitter,
                 )
-            if confirmed is not True:
-                return self._blocked(
+            except Exception:
+                return await self._confirmation_failure(
+                    method,
+                    path,
+                    "tool_confirmation_unavailable",
+                    "Confirmation failed; nothing was deleted. Do not automatically retry.",
+                    event_emitter,
+                )
+            if confirmed is False:
+                return await self._confirmation_failure(
                     method,
                     path,
                     "tool_confirmation_declined",
-                    "Deletion was not explicitly confirmed; nothing was deleted.",
+                    "Deletion was canceled; nothing was deleted. Do not automatically retry.",
+                    event_emitter,
+                )
+            if confirmed is not True:
+                return await self._confirmation_failure(
+                    method,
+                    path,
+                    "tool_confirmation_invalid_response",
+                    "Confirmation returned an invalid response; nothing was deleted. "
+                    "Do not automatically retry.",
+                    event_emitter,
                 )
         return await self._http_request(method, path, parameters, body, valves=valves)
 
@@ -485,7 +531,9 @@ class Tools:
             operation_id="craft_daily_update_task",
         )
 
-    async def craft_daily_delete_task(self, taskId: str, __event_call__=None) -> dict[str, Any]:
+    async def craft_daily_delete_task(
+        self, taskId: str, __event_call__=None, __event_emitter__=None
+    ) -> dict[str, Any]:
         """
         Delete one native task from daily notes, inbox, or logbook; this does not mark it done.
         No rollback or automatic retry. Do not blindly repeat an outcomeUnknown deletion.
@@ -495,6 +543,7 @@ class Tools:
             "DELETE",
             f"/v1/daily/tasks/{self._id(taskId)}",
             event_call=__event_call__,
+            event_emitter=__event_emitter__,
             operation_id="craft_daily_delete_task",
         )
 
@@ -506,6 +555,7 @@ class Tools:
         Read collection properties with list_collection_items; standalone item reads may omit them.
         :param blockId: API id from document/block discovery, not a navigation-link ID.
         :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
+            Do not send date write context on this read.
         """
         return await self._request(
             "GET",
@@ -522,6 +572,7 @@ class Tools:
         Craft can render block-link properties as [object Object]; read items for structured values.
         :param blockId: API document/page/block ID.
         :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
+            Do not send date write context on this read.
         """
         return await self._request(
             "GET",
@@ -636,6 +687,7 @@ class Tools:
         collectionId: str,
         itemId: str,
         __event_call__=None,
+        __event_emitter__=None,
     ) -> dict[str, Any]:
         """Delete one row and its nested content after a live confirmation dialog.
 
@@ -646,6 +698,7 @@ class Tools:
             "DELETE",
             f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}",
             event_call=__event_call__,
+            event_emitter=__event_emitter__,
             operation_id="craft_daily_delete_collection_item",
         )
 
@@ -654,6 +707,7 @@ class Tools:
         blockId: str,
         parameters: dict[str, Any],
         __event_call__=None,
+        __event_emitter__=None,
     ) -> dict[str, Any]:
         """Delete one verified leaf text block after a live confirmation dialog.
 
@@ -665,5 +719,6 @@ class Tools:
             f"/v1/daily/blocks/{self._id(blockId)}",
             parameters,
             event_call=__event_call__,
+            event_emitter=__event_emitter__,
             operation_id="craft_daily_delete_block",
         )

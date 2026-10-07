@@ -97,7 +97,17 @@ Each tool includes `craft_<adapter>_get_capabilities`; use it to discover enable
 
 Deletion uses the native Python tool's `__event_call__` dialog. It reads a bounded target preview, displays exact IDs/context and consequences, and accepts only explicit `True`. The request/profile/credential are captured before prompting. Cancellation, errors, timeout after 120 seconds, browser disconnection, missing callbacks, and unreadable previews prevent deletion. No model-provided `confirmed` flag bypasses this. Unattended automations can perform ordinary permitted actions but cannot delete through these tools.
 
+Only literal `False` is reported as `tool_confirmation_declined`; other non-boolean responses, including error dictionaries, return `tool_confirmation_invalid_response`. Callback exceptions/timeouts return `tool_confirmation_unavailable` with a fixed message identifying the condition. These local failures have no HTTP status/request ID, set `outcomeUnknown:false`, and submit no deletion. Inspect the result and do not automatically retry cancellation or failed confirmation.
+
+Deletion functions use the reserved `__event_emitter__` callback to display a final, visible **Nothing deleted** status for confirmation/preview failures. Missing or failed status delivery leaves the structured error and no-mutation behavior intact; status delivery is bounded to five seconds. These callback arguments are supplied by Open WebUI, not the model.
+
 See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin/development/events/). An installed-version smoke check is still required; mocked callback tests do not certify your browser/WebSocket setup.
+
+## Live pilot evidence
+
+User-reported Open WebUI checks passed for Space planner collection creation/property updates, scoped text insertion/updates, canceled/approved deletion, and denial of an unapproved collection. Daily planner checks passed for inbox-task creation with scheduling/deadline fields, rescheduling with unrelated fields preserved, completion/logbook read-back, cancellation with the task retained, and approved deletion verified by listing plus `craft_not_found` on the exact block ID. One creation returned a timeout with an uncertain outcome; inspection found exactly one task and no write retry was made. The latency cause remains unconfirmed.
+
+These checks cover the installed tool at that point, not every adapter/permission scenario. The newer visible-status/invalid-callback distinction still needs an installed-tool smoke check. Space task writes and collection-title editing remain unavailable; this pilot does not establish complete MCP replacement.
 
 ## Delivery checkpoints
 

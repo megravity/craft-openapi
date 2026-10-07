@@ -78,28 +78,54 @@ def test_delete_dialogs_fail_closed_and_show_exact_target(tool_context, kind, an
         if kind == "collection"
         else ("text/?", {"date": "today"} if adapter == "daily" else {"documentId": "root"})
     )
-    result = asyncio.run(method(*args, __event_call__=confirm))
+    statuses = []
+
+    async def emit(event):
+        statuses.append(event)
+
+    result = asyncio.run(method(*args, __event_call__=confirm, __event_emitter__=emit))
     assert len(events) == 1
     assert [r.method for r in calls] == (["GET", "DELETE"] if answer is True else ["GET"])
     if answer is True:
         assert result["statusCode"] == 200
+        assert statuses == []
     else:
         assert result["response"]["error"]["outcomeUnknown"] is False
+        assert result["response"]["error"]["code"] == (
+            "tool_confirmation_declined"
+            if answer is False
+            else "tool_confirmation_invalid_response"
+        )
+        assert result["statusCode"] is None and result["requestId"] is None
+        assert len(statuses) == 1
+        assert statuses[0]["type"] == "status"
+        assert statuses[0]["data"]["description"].startswith("Nothing deleted.")
+        assert statuses[0]["data"]["done"] is True
+        assert statuses[0]["data"]["hidden"] is False
+        assert "Do not automatically retry" in statuses[0]["data"]["description"]
 
 
 def test_missing_callback_and_unreadable_preview_never_delete(tool_context):
     adapter, module, tool, calls, connect = tool_context
     connect(lambda request: httpx.Response(404, json={"error": {"code": "not_found"}}))
     method = getattr(tool, f"craft_{adapter}_delete_collection_item")
-    result = asyncio.run(method("c", "row"))
+    statuses = []
+
+    async def emit(event):
+        statuses.append(event)
+
+    result = asyncio.run(method("c", "row", __event_emitter__=emit))
     assert result["response"]["error"]["code"] == "tool_confirmation_required"
+    assert statuses[-1]["data"]["description"].startswith("Nothing deleted.")
     assert calls == []
 
     async def confirm(event):
         pytest.fail("Unreadable targets must not prompt")
 
-    result = asyncio.run(method("c", "row", __event_call__=confirm))
+    result = asyncio.run(method("c", "row", __event_call__=confirm, __event_emitter__=emit))
     assert result["response"]["error"]["code"] == "tool_preview_unavailable"
+    assert len(statuses) == 2
+    assert "Could not read" in statuses[-1]["data"]["description"]
     assert [r.method for r in calls] == ["GET"]
 
 
@@ -114,10 +140,94 @@ def test_confirmation_timeout_never_deletes(tool_context, monkeypatch):
         await asyncio.sleep(0.1)
         return True
 
+    statuses = []
+
+    async def emit(event):
+        statuses.append(event)
+
     result = asyncio.run(
-        getattr(tool, f"craft_{adapter}_delete_collection_item")("c", "row", __event_call__=confirm)
+        getattr(tool, f"craft_{adapter}_delete_collection_item")(
+            "c", "row", __event_call__=confirm, __event_emitter__=emit
+        )
     )
     assert result["response"]["error"]["code"] == "tool_confirmation_unavailable"
+    assert "timed out" in statuses[0]["data"]["description"]
+    assert [r.method for r in calls] == ["GET"]
+
+
+def test_confirmation_exception_reports_safe_failure(tool_context):
+    adapter, module, tool, calls, connect = tool_context
+    connect(
+        lambda request: httpx.Response(200, json={"items": [{"id": "row", "title": "Example"}]})
+    )
+    statuses = []
+
+    async def confirm(event):
+        raise RuntimeError("private-callback-value")
+
+    async def emit(event):
+        statuses.append(event)
+
+    result = asyncio.run(
+        getattr(tool, f"craft_{adapter}_delete_collection_item")(
+            "c", "row", __event_call__=confirm, __event_emitter__=emit
+        )
+    )
+    assert result["response"]["error"]["code"] == "tool_confirmation_unavailable"
+    assert "Confirmation failed" in statuses[0]["data"]["description"]
+    assert "private-callback-value" not in json.dumps([result, statuses])
+    assert [r.method for r in calls] == ["GET"]
+
+
+@pytest.mark.parametrize("failure", ["exception", "timeout"])
+def test_status_delivery_failure_preserves_cancellation(tool_context, monkeypatch, failure):
+    adapter, module, tool, calls, connect = tool_context
+    monkeypatch.setattr(module, "UI_EVENT_TIMEOUT_SECONDS", 0.001)
+    connect(
+        lambda request: httpx.Response(200, json={"items": [{"id": "row", "title": "Example"}]})
+    )
+
+    async def confirm(event):
+        return False
+
+    async def emit(event):
+        if failure == "timeout":
+            await asyncio.sleep(0.1)
+        else:
+            raise RuntimeError("Unavailable UI")
+
+    result = asyncio.run(
+        getattr(tool, f"craft_{adapter}_delete_collection_item")(
+            "c", "row", __event_call__=confirm, __event_emitter__=emit
+        )
+    )
+    assert result["response"]["error"]["code"] == "tool_confirmation_declined"
+    assert result["response"]["error"]["outcomeUnknown"] is False
+    assert [r.method for r in calls] == ["GET"]
+
+
+def test_daily_task_deletion_emits_cancellation_status(tool_context):
+    adapter, module, tool, calls, connect = tool_context
+    if adapter != "daily":
+        return
+    connect(
+        lambda request: httpx.Response(
+            200, json={"id": "task", "type": "text", "markdown": "Example task"}
+        )
+    )
+    statuses = []
+
+    async def confirm(event):
+        return False
+
+    async def emit(event):
+        statuses.append(event)
+
+    result = asyncio.run(
+        tool.craft_daily_delete_task("task", __event_call__=confirm, __event_emitter__=emit)
+    )
+    assert result["response"]["error"]["code"] == "tool_confirmation_declined"
+    assert statuses[0]["data"]["description"].startswith("Nothing deleted.")
     assert [r.method for r in calls] == ["GET"]
 
 
