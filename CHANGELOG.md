@@ -4,12 +4,12 @@
 
 - Add document-targeted Space task creation, partial updates/completion, and confirmed leaf-task deletion. Require owning context and fresh structural/native-task proofs, enforce planner document targets, and keep inbox/daily-note targets, movement, and clearing outside this checkpoint.
 
-- Improve Python-tool deletion feedback with visible no-deletion statuses and separate cancellation, invalid callback, and callback-failure handling; clarify that ID reads omit write context. Record reported Space/Daily planner smoke checks and the unresolved timeout observation.
+- Improve Python-tool deletion feedback with visible no-deletion statuses and separate cancellation, invalid callback, and callback-failure handling; clarify that ID reads omit write context. Record Space/Daily planner verification observations and the unresolved timeout.
 - Add opt-in experimental read-only, planner, and expiring copy-only migration profiles with separate tokens, schemas/capabilities, approved write targets, and no legacy-route bypass.
 - Verify collection membership and owning document/note structure before scoped writes, excluding collection subtrees and unsupported relation/complex property writes; share the overall verification/submission deadline.
 - Add profile-aware Open WebUI tools, capability discovery, and captured-request deletion confirmations that fail closed without an explicit live approval.
 - Add Space task discovery and singleton collection-item/leaf-text deletion across adapters, with protected root/type checks and uncertain-outcome handling.
-- Document reviewed backlog copies, source-ID duplicate checks, explicit scheduled-task linkage, and sanitized Portainer profile setup. Title editing remains deferred: its HTTP payload worked for a default title column but was rejected for a named column; both scratch rows were restored.
+- Document reviewed backlog copies, source-ID duplicate checks, explicit scheduled-task linkage, and sanitized Portainer profile setup. A follow-up pinned the title-write contract for both default/named columns using their actual top-level schema keys, with exact restoration. Title routes and schema-aware headline normalization remain unimplemented.
 - Keep release metadata at 0.4.0; the next capability release is expected to be 0.5.0.
 
 ## 0.4.0 — 2026-10-04

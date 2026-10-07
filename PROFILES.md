@@ -103,26 +103,32 @@ Only literal `False` is reported as `tool_confirmation_declined`; other non-bool
 
 Deletion functions use the reserved `__event_emitter__` callback to display a final, visible **Nothing deleted** status for confirmation/preview failures. Missing or failed status delivery leaves the structured error and no-mutation behavior intact; status delivery is bounded to five seconds. These callback arguments are supplied by Open WebUI, not the model.
 
-See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin/development/events/). An installed-version smoke check is still required; mocked callback tests do not certify your browser/WebSocket setup.
+See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin/development/events/). Mocked callback tests cover tool behavior; installed-tool checks cover the actual confirmation dialog and read-back workflow.
 
-## Live pilot evidence
+## Verification observations — 2026-10-07
 
-User-reported Open WebUI checks passed for Space planner collection creation/property updates, scoped text insertion/updates, canceled/approved deletion, and denial of an unapproved collection. Daily planner checks passed for inbox-task creation with scheduling/deadline fields, rescheduling with unrelated fields preserved, completion/logbook read-back, cancellation with the task retained, and approved deletion verified by listing plus `craft_not_found` on the exact block ID. One creation returned a timeout with an uncertain outcome; inspection found exactly one task and no write retry was made. The latency cause remains unconfirmed.
+| Surface | Observation | Evidence |
+|---|---|---|
+| Space planning content | Collection creation/property updates and scoped text insertion/updates succeeded. Canceled deletion retained the target; approved deletion removed it. An unapproved collection returned `403 permission_denied`. | Open WebUI execution reports and read-back checks. |
+| Space document tasks | Creation, rescheduling, and completion succeeded with wording/dates preserved. Completed tasks remained in their document. Canceled deletion retained the task; approved leaf-task deletion removed it from document listing and produced `craft_not_found` on direct block read. An unapproved document root returned `403 permission_denied`. | Open WebUI execution reports and read-back checks; disposable task removed. |
+| Daily tasks | Scheduled inbox-task creation, rescheduling, and completion/logbook read-back succeeded. Cancellation retained the task; approved deletion removed it from the logbook and produced `craft_not_found` on direct block read. | Open WebUI execution reports and read-back checks; disposable task removed. |
+| Uncertain creation | One Daily creation returned `504 craft_timeout` with `outcomeUnknown:true`. Inspection found exactly one created task; the write was not repeated. Subsequent updates/deletion returned `200`. The latency cause remains unconfirmed. | Open WebUI request results and inbox/upcoming read-back checks. |
+| Collection headlines | Craft's per-collection `json-schema-items` representation exposed top-level `title` for the default column and `task` for the named column. Updates using each actual key changed the headline, preserved properties/nested content, and restored the returned row fields exactly. Hardcoded `title` was rejected for the named column. | Direct HTTP schema reads, updates, read-back checks, and restoration of two scratch rows. |
 
-These checks cover the installed tool at that point, not every adapter/permission scenario. The newer visible-status/invalid-callback distinction still needs an installed-tool smoke check. The newer Space task writes still need live verification, and collection-title editing remains unavailable; this pilot does not establish complete MCP replacement.
+These observations cover the tested scratch workflows. Live Multi-Document workflows and visual rendering of the **Nothing deleted** status remain unverified. Automated tests cover callback failures, target/credential isolation, and other adapter combinations separately. Collection-title routes and schema-aware headline mapping remain unimplemented; complete MCP replacement is not established.
 
 ## Delivery checkpoints
 
 | Checkpoint | State in the working tree |
 |---|---|
-| 0. Title-write verification | Default title update/restore passed; named title column rejected the same HTTP payload. Both scratch rows retained their original properties/content. No title-edit endpoint is exposed. |
+| 0. Title-write verification | Passed for both scratch shapes using each schema's headline key. The earlier hardcoded-title payload was invalid for the named column. Both rows were restored exactly; no title-edit endpoint is exposed yet. |
 | 1. Read-only profiles | Configuration, credentials, profile schema/capabilities, expiry, and legacy isolation implemented. |
 | 2. Planner/migration scope | Target checks and combined deadlines implemented. Migration remains copy-only. |
 | 3. Python-tool safeguards | Profile discovery and fail-closed confirmation implemented, including existing Daily task deletion. |
 | 4. Space task discovery | All six discovery scopes implemented; the follow-up adds approved-document creation/updates and verified leaf-task deletion. Inbox/daily-note Space targets, movement and clearing stay unavailable. |
 | 5. Collection-item deletion | Singleton deletion across three adapters, membership checks, and dialog integration implemented. |
 | 6. Leaf-block deletion | Scoped structural/type checks and dialog integration implemented across three adapters. |
-| 7. Title editing | Unavailable: verification gate did not pass for both title-column shapes. No undocumented workaround. |
+| 7. Title editing | Verification gate passed; public endpoints and schema-aware headline mapping are not implemented yet. No schema/block-edit workaround. |
 | 8. Reviewed workflow | [Backlog workflow](BACKLOG_WORKFLOW.md), mocked acceptance scenarios, setup and coverage documentation. |
 
 These checkpoints are implementation groups, not automatically created Git commits or releases. Live deployment, real migration, release preparation, commits/tags/publishing, and broader permission management remain separate actions.

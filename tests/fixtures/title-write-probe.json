@@ -1,5 +1,5 @@
 {
-  "observedOn": "2026-10-06",
+  "observedOn": "2026-10-07",
   "candidate": {"itemsToUpdate": [{"id": "scratch-row", "title": "Changed probe title"}]},
   "defaultColumn": {
     "before": {"id": "scratch-row", "title": "Original title", "properties": {"probe": "Preserved"}, "content": [{"id": "nested-text", "type": "text", "markdown": "Preserved content"}]},
@@ -9,10 +9,12 @@
   },
   "namedColumn": {
     "before": {"id": "scratch-row", "task": "Original title", "properties": {"probe": "Preserved"}, "content": [{"id": "nested-text", "type": "text", "markdown": "Preserved content"}]},
-    "wrapperErrorCode": "craft_rejected_request",
-    "titleChanged": false,
+    "hardcodedTitleErrorCode": "craft_rejected_request",
+    "verifiedCandidate": {"itemsToUpdate": [{"id": "scratch-row", "task": "Changed probe title"}]},
+    "schemaTitleKey": "task",
+    "titleChanged": true,
     "propertiesAndContentPreserved": true,
     "restored": true
   },
-  "gatePassed": false
+  "gatePassed": true
 }

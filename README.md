@@ -473,7 +473,18 @@ All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with
 
 Space response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Multi-Document tests use generic synthetic examples of documented responses, including deleted documents and scoped links. Daily Notes tests use generic synthetic fixtures for date-based content, search, collections, and partial task responses. Fixture generation never edits the source docs.
 
-Live Craft validation is separate from automated tests. A scratch-row title-update probe verified the default title-column payload and exact restoration, but an explicitly named title column rejected it; no title-editing endpoint is exposed.  Read-only probes reproduced schema option objects, missing title metadata, and calendar-date string values. A separate write probe verified an existing collection row's Date update, read it back, restored the original value, and confirmed all properties matched their original values. Regression cases use generic synthetic values, not captured personal schemas. Secret-link-only authentication worked for these requests. No additional Craft auth headers or OAuth flow were documented or implemented, and select writes were not live-tested.
+### Verification observations
+
+Direct Craft HTTP probes confirmed:
+
+- Collection schemas can return option objects and omit default-title metadata. Populated Date values were calendar-date strings.
+- A string-valued Date update persisted on read-back, and restoration preserved all original properties.
+- Default and named row headlines updated through their actual top-level schema keys. Returned row fields were restored exactly, with properties/nested content preserved. A hardcoded title key was invalid for the named column; public title editing and normalization remain unimplemented.
+- Secret-link-only authentication worked. Select-property writes and additional authentication mechanisms were not verified.
+
+Open WebUI execution reports and read-back checks cover Space collection/content planning, Space document-task and Daily inbox-task lifecycles, canceled/approved deletion, and unapproved-target denial. One uncertain Daily creation was found exactly once during inspection and was not repeated. The latency cause and visual rendering of the no-deletion status remain unconfirmed. See [profile observations](PROFILES.md#verification-observations--2026-10-07) for the evidence and limits.
+
+Automated regression fixtures contain synthetic values; private IDs, credentials, and captured content are excluded.
 
 ---
 

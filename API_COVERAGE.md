@@ -201,7 +201,7 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 
 **Collection-item updates — P in all adapters.** `Identifier` for collection/item plus nonempty `UpdateCollectionProperties` maps PATCH to `PUT .../items` with `{itemsToUpdate:[{id,properties}]}`. Omitted properties are preserved; response is one possibly sparse `CollectionItem`.
 
-**Gaps/boundaries:** no batch updates; string-valued property changes only. Profile property writes verify schema field types and deny relations/block links/unknown complex types before submission. A live scratch probe updated/restored a default title column, but the same `itemsToUpdate:[{id,title}]` payload was rejected for an explicitly named column. No title-edit endpoint is exposed. Other title updates, relations, and clearing are not inferred from examples; verify upstream support before adding them.
+**Gaps/boundaries:** no batch updates; string-valued property changes only. Profile property writes verify schema field types and deny relations/block links/unknown complex types before submission. A follow-up live scratch probe verified `itemsToUpdate:[{id,<schemaHeadlineKey>:title}]` for both default and explicitly named title columns, preserving properties/content and restoring both rows exactly. Craft's per-collection json-schema-items representation identifies the headline as a top-level field, not a regular property. The earlier hardcoded title field was invalid for the named column. No title-edit endpoint or schema-aware normalization is exposed yet. Other title updates, relations, and clearing are not inferred from examples; verify upstream support before adding them.
 
 ### C4
 
@@ -308,7 +308,7 @@ The D cells above have no public operation IDs or wrapper request/response model
 | Connection info | Verify metadata/timezone/link-template shapes per adapter; never expose connection credentials. |
 | In-document search | Preserve Space `blockId`, Multi-Document `documentId`, and Daily Notes `date` selectors. Verify regex semantics and context limits. |
 | Comments | The references document adding comments, not a general comment CRUD API. |
-| Space task extensions | Document-scoped singleton writes are present. Other Space location selectors, movement, date clearing and batch variants remain deferred; live verification of the new writes is pending. |
+| Space task extensions | Document-task creation/rescheduling/completion, canceled/approved leaf-task deletion, and unapproved-root denial passed installed-tool checks. Other Space location selectors, movement, date clearing and batch variants remain deferred. |
 | Reminders | Verify availability/ownership and required connection authorization separately; implement documented cursors and invalid-cursor behavior explicitly. |
 | Uploads | Verify binary content negotiation and query fields; revisit appropriate limits without silently truncating payloads. |
 | Whiteboards | Verify creation positions, element/assets/appState shapes, limits, and mutation semantics. |
@@ -329,7 +329,9 @@ These links identify automated regression coverage already present in the reposi
 | Experimental profiles and deletion | [test_profiles.py](tests/test_profiles.py), [test_planning_operations.py](tests/test_planning_operations.py), [test_openwebui_profiles.py](tests/test_openwebui_profiles.py): profile/target/credential isolation, schema combinations, combined deadlines, copy-only migration, fresh membership, exact deletion mappings, protected block shapes, confirmation failures, captured requests, and reviewed-copy workflow. |
 | Shared transport/errors | [test_transport.py](tests/test_transport.py): deadlines, phase/network failures, decoding, size limits, sanitized error mapping, Retry-After, and no retries. |
 
-Existing live-probe scope and caveats are recorded in [README](README.md#tests-and-checks). Synthetic observations are stored in [title-write-probe.json](tests/fixtures/title-write-probe.json); they contain no live IDs or private payloads. The current feature performed separately authorized scratch-row title probes through MCP/HTTP: the default column passed and restored exactly; the named column rejected the candidate and remained unchanged. Probe IDs, credentials, and captured private payloads are not stored here. A model/tool report alone does not establish upstream correctness or automatic-task outcomes.
+Direct HTTP scratch-row probes confirmed headline updates for default/named columns using their actual top-level schema keys. Returned row fields were restored exactly, with properties/nested content preserved. The earlier hardcoded-title candidate was rejected for the named column. [Synthetic observations](tests/fixtures/title-write-probe.json) record that contract without live IDs or private payloads.
+
+[Profile observations](PROFILES.md#verification-observations--2026-10-07) distinguish installed Open WebUI execution reports/read-back checks from direct HTTP probes. Verification is limited to those workflows and tested shapes; untested variants and visual UI behavior retain their stated gaps. [README observations](README.md#verification-observations) summarize the earlier schema/date probes.
 
 ## Keeping the matrix current
 

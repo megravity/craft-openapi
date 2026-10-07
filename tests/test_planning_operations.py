@@ -175,13 +175,13 @@ def test_invalid_space_task_filters_make_no_upstream_call(params):
         assert client.get("/v1/space/tasks", params=params, headers=AUTH).status_code == 422
 
 
-def test_unverified_title_editing_is_not_advertised_or_callable():
+def test_title_editing_is_not_advertised_before_implementation():
     from pathlib import Path
 
     evidence = json.loads(
         (Path(__file__).parent / "fixtures" / "title-write-probe.json").read_text()
     )
-    assert evidence["gatePassed"] is False
+    assert evidence["gatePassed"] is True
     for adapter in ("space", "documents", "daily"):
         with TestClient(
             app_for(adapter, lambda request: pytest.fail("Title editing must not contact Craft"))
