@@ -27,7 +27,7 @@ Keep the collection row as the planning record. When scheduled work should appea
 
 After completing/canceling the native task, explicitly update the row's status. Treat those as separate calls, verify their results, and report partial completion instead of claiming synchronization. Task dates are not timed reminders.
 
-Space task writes are still deferred. Scheduled native tasks in ordinary project documents may require Craft/MCP until a follow-up adds those operations or a person moves them into the Daily connection's scope. Do not retire MCP for workflows the pilot has not covered.
+The unreleased Space adapter can create, reschedule, edit, complete/cancel, and delete native tasks within approved planning documents. Creation includes documentId in the body; updates/deletion require owning documentId query context and fresh structural/native-task membership checks. Only leaf tasks can be deleted. Keep inbox/daily-note writes on the Daily tool. Movement, date clearing, collection-title editing, and nested row-note editing remain unsupported. Live Space-write verification is still pending; do not retire MCP for workflows the pilot has not covered.
 
 ## Acceptance before retiring MCP
 

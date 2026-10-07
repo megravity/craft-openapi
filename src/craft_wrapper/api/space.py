@@ -7,6 +7,7 @@ from craft_wrapper.api.permissions import authorize_write
 from craft_wrapper.api.responses import ERROR_RESPONSES
 from craft_wrapper.api.schemas import (
     AddCollectionItem,
+    AddSpaceTask,
     BlockDepth,
     CollectionFilters,
     CreateDocument,
@@ -18,8 +19,10 @@ from craft_wrapper.api.schemas import (
     MarkdownContent,
     SearchFilters,
     SpaceTaskFilters,
+    SpaceTaskWriteContext,
     UpdateCollectionProperties,
     UpdateMarkdown,
+    UpdateTask,
 )
 from craft_wrapper.craft.models import Block, CollectionItem, DeletedResource, Items
 from craft_wrapper.craft.space.client import SpaceClient
@@ -61,6 +64,65 @@ def make_router() -> APIRouter:
     )
     async def list_tasks(client: Client, filters: Annotated[SpaceTaskFilters, Query()]):
         return await client.list_tasks(filters.model_dump(exclude_none=True))
+
+    @router.post(
+        "/tasks",
+        operation_id="craft_space_add_task",
+        status_code=201,
+        response_model=SpaceTask,
+        response_model_exclude_none=True,
+        summary="Create one task in an approved planning document",
+        description="Create one native task at the top of the specified document. documentId "
+        "is its root block ID and must be approved in profile mode. The root is verified "
+        "freshly before submission in every mode. Optional scheduleDate/deadlineDate accept "
+        "calendar or relative dates resolved by Craft. Use the Daily tool for inbox/daily-note "
+        "targets. No retries; outcomeUnknown means the task may already exist.",
+    )
+    async def add_task(body: AddSpaceTask, client: Client, request: Request):
+        await authorize_write(request)
+        return await client.add_task(body.model_dump(exclude_none=True))
+
+    @router.patch(
+        "/tasks/{taskId}",
+        operation_id="craft_space_update_task",
+        response_model=SpaceTask,
+        response_model_exclude_none=True,
+        summary="Edit or complete one task in an approved document",
+        description="Update selected Markdown, state (todo/done/canceled), scheduleDate, or "
+        "deadlineDate. Require owning documentId query context in every mode. Fresh document "
+        "structure and native-task discovery verify membership, excluding collection subtrees. "
+        "Omitted fields are preserved; nulls, date clearing and movement are unsupported. "
+        "Responses can be partial. No retries; inspect uncertain outcomes before repeating.",
+    )
+    async def update_task(
+        taskId: Identifier,
+        body: UpdateTask,
+        client: Client,
+        request: Request,
+        context: Annotated[SpaceTaskWriteContext, Query()],
+    ):
+        await authorize_write(request)
+        return await client.update_task(taskId, body.model_dump(exclude_none=True))
+
+    @router.delete(
+        "/tasks/{taskId}",
+        operation_id="craft_space_delete_task",
+        response_model=DeletedResource,
+        summary="Delete one verified leaf task in an approved document",
+        description="Require owning documentId query context in every mode. Verify document "
+        "structure and native-task membership freshly. Only leaf text tasks are deletable; "
+        "nested content, roots, media and collection subtrees are protected. Python tools "
+        "require confirmation; authorized raw HTTP does not. No rollback or retries; "
+        "inspect uncertain outcomes before repeating.",
+    )
+    async def delete_task(
+        taskId: Identifier,
+        client: Client,
+        request: Request,
+        context: Annotated[SpaceTaskWriteContext, Query()],
+    ):
+        await authorize_write(request)
+        return await client.delete_task(taskId)
 
     @router.get(
         "/folders",

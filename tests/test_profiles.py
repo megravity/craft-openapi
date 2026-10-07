@@ -388,13 +388,14 @@ def test_overall_write_deadline_distinguishes_unknown_outcomes(stage):
     async def handler(request):
         calls.append(request)
         if (request.method == "GET") == (stage == "verification"):
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(3)
         return httpx.Response(
             200,
             json=ROOT if request.method == "GET" else {"items": [{"id": "text", "type": "text"}]},
         )
 
-    settings = profile_settings({"planner": PLANNER}, craft_timeout_seconds=0.03)
+    # Allow cold route validation to finish before stalling the selected request phase.
+    settings = profile_settings({"planner": PLANNER}, craft_timeout_seconds=1)
     with TestClient(
         create_app(settings, upstream_transport=httpx.MockTransport(handler))
     ) as client:

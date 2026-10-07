@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add document-targeted Space task creation, partial updates/completion, and confirmed leaf-task deletion. Require owning context and fresh structural/native-task proofs, enforce planner document targets, and keep inbox/daily-note targets, movement, and clearing outside this checkpoint.
+
 - Improve Python-tool deletion feedback with visible no-deletion statuses and separate cancellation, invalid callback, and callback-failure handling; clarify that ID reads omit write context. Record reported Space/Daily planner smoke checks and the unresolved timeout observation.
 - Add opt-in experimental read-only, planner, and expiring copy-only migration profiles with separate tokens, schemas/capabilities, approved write targets, and no legacy-route bypass.
 - Verify collection membership and owning document/note structure before scoped writes, excluding collection subtrees and unsupported relation/complex property writes; share the overall verification/submission deadline.

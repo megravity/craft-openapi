@@ -131,6 +131,41 @@ class SpaceTaskFilters(InputModel):
         return self
 
 
+class AddSpaceTask(InputModel):
+    documentId: Identifier = Field(description="Owning document root ID; approved in profile mode.")
+    markdown: NonemptyText
+    scheduleDate: CraftDate | None = None
+    deadlineDate: CraftDate | None = None
+
+    @model_validator(mode="after")
+    def no_nulls(self) -> "AddSpaceTask":
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Explicit nulls and date clearing are unsupported")
+        return self
+
+
+class SpaceTaskWriteContext(InputModel):
+    documentId: Identifier = Field(
+        description="Owning document root ID, required in every mode. "
+        "Used for fresh structure/native-task verification; never moves the task."
+    )
+
+
+class UpdateTask(InputModel):
+    markdown: NonemptyText | None = None
+    state: Literal["todo", "done", "canceled"] | None = None
+    scheduleDate: CraftDate | None = None
+    deadlineDate: CraftDate | None = None
+
+    @model_validator(mode="after")
+    def nonempty_changes(self) -> "UpdateTask":
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one task change")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Explicit nulls and date clearing are unsupported")
+        return self
+
+
 class CreateDocument(InputModel):
     title: NonemptyText
     folderId: Identifier | None = None

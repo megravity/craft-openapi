@@ -79,7 +79,14 @@ def add_capabilities(app: FastAPI, profile_id: str) -> None:
                 configured.documentIds
                 if any(
                     f"craft_{adapter}_{suffix}" in operations
-                    for suffix in ("insert_markdown", "update_block_markdown", "delete_block")
+                    for suffix in (
+                        "insert_markdown",
+                        "update_block_markdown",
+                        "delete_block",
+                        "add_task",
+                        "update_task",
+                        "delete_task",
+                    )
                 )
                 else []
             )

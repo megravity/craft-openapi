@@ -215,7 +215,7 @@ Environment variables override `.env`. Startup rejects missing credentials, plac
 | `WRAPPER_API_TOKEN`             | Required in legacy mode; ignored when experimental profiles are enabled. Nonempty independent bearer token without whitespace.                                                                                                                       |
 | `CRAFT_TIMEOUT_SECONDS`         | `30`; overall upstream deadline and read/write/pool phase limits.                                                                                                                     |
 | `CRAFT_CONNECT_TIMEOUT_SECONDS` | `5`; upstream connection limit, also bounded by the overall deadline.                                                                                                                 |
-| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (16 Space, 13 Multi-Document, 19 Daily Notes; 48 combined in the working tree). `read_only`: their reads (9 Space, 7 Multi-Document, 9 Daily Notes; 25 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
+| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (19 Space, 13 Multi-Document, 19 Daily Notes; 51 combined in the working tree). `read_only`: their reads (9 Space, 7 Multi-Document, 9 Daily Notes; 25 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
 | `WRAPPER_PUBLIC_URL`            | Optional non-secret HTTP(S) origin, without a path/query/credentials; sets OpenAPI `servers`. Otherwise consumers use the schema origin.                                              |
 | `WRAPPER_PROFILES_JSON` | Optional experimental profile rules. Omitted preserves legacy mode; see [profile configuration](PROFILES.md). |
 | `WRAPPER_READ_ONLY_TOKEN`, `WRAPPER_PLANNER_TOKEN`, `WRAPPER_MIGRATION_TOKEN` | Separate credentials for enabled profiles; never place them in the rules JSON. |
@@ -242,7 +242,7 @@ Selection takes effect at startup. Recreate the Docker container after changing 
 
 Reads/updates return `200`; creates/insertion return `201`. All responses are JSON, including rendered Markdown.
 
-The unreleased working tree exposes **48 Craft operations** (16 Space, 13 Multi-Document, 19 Daily Notes), or **25 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
+The unreleased working tree exposes **51 Craft operations** (19 Space, 13 Multi-Document, 19 Daily Notes), or **25 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
 
 ### Space
 
@@ -250,6 +250,12 @@ All paths below start with `/v1/space`.
 
 | Method and path                                    | Stable operation ID                             | Behavior                                                                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /tasks` | `craft_space_list_tasks` | Required scope active/upcoming/inbox/logbook/document/all; documentId required only for document scope. |
+| `POST /tasks` | `craft_space_add_task` | One `{documentId,markdown,scheduleDate?,deadlineDate?}` task in a verified document; approved root required in profile mode. |
+| `PATCH /tasks/{taskId}` | `craft_space_update_task` | Owning documentId query required; selected Markdown/state/dates only, no clearing or movement. |
+| `DELETE /tasks/{taskId}` | `craft_space_delete_task` | Owning documentId query and fresh native/structural membership; leaf tasks only; Python confirmation required. |
+| `DELETE /blocks/{blockId}` | `craft_space_delete_block` | Verified leaf-text deletion; owning documentId query required in every mode. |
+| `DELETE /collections/{collectionId}/items/{itemId}` | `craft_space_delete_collection_item` | Delete one row and nested content; verify membership and require Python confirmation. |
 | `GET /folders`                                     | `craft_space_list_folders`                      | Hierarchy and document counts, `{items:[...]}`.                                                                                                 |
 | `GET /documents`                                   | `craft_space_list_documents`                    | IDs/titles, optional metadata, `{items:[...]}`. Filter by `location` or `folderId` (direct documents only).                                     |
 | `GET /documents/search`                            | `craft_space_search_documents`                  | Required plain `query`; ranked content snippets, including substring matches. Optional one of `location`, `folderId`, `documentId`; `fetchBlocks=false`. |
@@ -297,6 +303,8 @@ All paths below start with `/v1/documents`. These routes use only `CRAFT_DOCUMEN
 | `GET /collections/{collectionId}/items` | `craft_documents_list_collection_items` |
 | `POST /collections/{collectionId}/items` | `craft_documents_add_collection_item` |
 | `PATCH /collections/{collectionId}/items/{itemId}` | `craft_documents_update_collection_item_properties` |
+| `DELETE /blocks/{blockId}` | `craft_documents_delete_block` |
+| `DELETE /collections/{collectionId}/items/{itemId}` | `craft_documents_delete_collection_item` |
 
 Document listing accepts only `fetchMetadata=false`; entries include `id`, `title`, and `isDeleted`. Deleted entries remain visible. Optional metadata includes `createdAt`, `lastModifiedAt`, and `clickableLink`. Use `id` for API reads, not an ID extracted from the navigation link.
 
@@ -403,7 +411,7 @@ A write failure after submission can leave its outcome uncertain, including malf
 
 ### Workspace Python tool
 
-Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (16 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (13), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (19). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
+Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (19 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (13), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (19). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
 
 1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of the selected tool file into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
 2. Open the tool's **Valves** settings and configure the values below. The token field uses Open WebUI's [password input convention](https://docs.openwebui.com/features/extensibility/plugin/development/valves/); masking the input does not itself encrypt stored values. Restrict tool access to the intended users.
@@ -436,7 +444,7 @@ Nested query/body keys are forwarded without silently removing unknown fields. F
 
 Each result contains `request` (method, path, serialized query), `statusCode`, `requestId`, and the unchanged JSON `response`. This distinguishes a wrapper rejection from a tool connection/decoding failure. Authentication headers and write bodies are not included in request evidence. Wrapper error codes, retry guidance, and uncertain-write flags are preserved. The tool does not follow redirects or retry requests; failed writes after submission are marked uncertain. Results exceeding 9 MiB are rejected rather than truncated.
 
-Each Python tool keeps a static function list: 17 for Space, 14 for Multi-Document, and 20 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
+Each Python tool keeps a static function list: 20 for Space, 14 for Multi-Document, and 20 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
 
 To update the installed tool after pulling repository changes, replace its code in the Open WebUI editor with the current file and save it. Check its Valves settings afterward. Rebuilding the wrapper image does not update the separately installed Open WebUI tool. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
 
@@ -461,7 +469,7 @@ uvx basedpyright
 
 `pyproject.toml` sets standard type checking for Pyright and basedpyright, using the project's `.venv` and Python 3.12. The editor and CLI use the same configuration; basedpyright's stricter annotation/style rules are not enabled by this preset. `uvx` runs the checker separately from application dependencies. See [basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/).
 
-All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 48 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
+All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 51 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
 
 Space response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Multi-Document tests use generic synthetic examples of documented responses, including deleted documents and scoped links. Daily Notes tests use generic synthetic fixtures for date-based content, search, collections, and partial task responses. Fixture generation never edits the source docs.
 
@@ -484,7 +492,7 @@ All three local docs were compared before design. Space has 44 documented method
 
 All three adapters reuse transport/errors and matching block/collection helpers and models. Keep scope-specific discovery and filters in their adapters; share additional helpers only when contracts match. Do not introduce a universal Craft interface or capability framework. Existing Space operation IDs stay stable.
 
-Native task writes remain Daily Notes-only; the unreleased Space adapter adds task discovery. Singleton collection-item deletion and protected leaf-text deletion are also available in the working tree. Broader deletion/movement operations, folder writes, collection creation/schema mutation/views, comments, reminders, uploads, and whiteboards remain deferred. Other documented gaps remain explicit: examples use inconsistent identifier terminology and collection-type representations; array query serialization and regex claims are ambiguous; list pagination and mutation atomicity are unspecified. The wrapper follows documented example field names, accepts single-value filters, preserves read type strings, and omits those uncertain capabilities.
+The unreleased Space adapter adds document-targeted native task creation, updates and leaf-task deletion. Space writes verify the approved root and native-task membership; inbox/daily-note writes remain on the Daily adapter. Space task movement and date clearing remain unsupported. Singleton collection-item deletion and protected leaf-text deletion are also available in the working tree. Broader deletion/movement operations, folder writes, collection creation/schema mutation/views, comments, reminders, uploads, and whiteboards remain deferred. Other documented gaps remain explicit: examples use inconsistent identifier terminology and collection-type representations; array query serialization and regex claims are ambiguous; list pagination and mutation atomicity are unspecified. The wrapper follows documented example field names, accepts single-value filters, preserves read type strings, and omits those uncertain capabilities.
 
 ---
 
@@ -496,7 +504,7 @@ Future additions are listed below. Implemented experimental permission profiles 
 
 Target coverage of every currently documented operation across the Space, Multi-Document, and Daily Notes APIs. Daily Notes content, existing collection items, and native task operations are available in 0.4.0. Remaining additions include:
 
-- Space task creation, updates, and deletion; discovery is implemented in the working tree.
+- Extend Space task targets and movement beyond approved documents if needed; document-targeted creation/updates and leaf-task deletion are implemented in the working tree.
 - Document deletion, broader block deletion, and movement. Singleton collection-item deletion and leaf-text deletion are implemented in the working tree.
 - Space folder creation, deletion, and movement.
 - Collection creation and schema replacement; collection-view listing, creation, updates, deletion, and active-view selection. Views remain stored configuration, not executed queries.

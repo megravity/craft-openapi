@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from craft_wrapper.craft import operations
+from craft_wrapper.craft.errors import CraftError
 from craft_wrapper.craft.models import Block, CollectionItem, DeletedResource, Items
 from craft_wrapper.craft.space.models import (
     CollectionSchema,
@@ -33,6 +34,51 @@ class SpaceClient:
         params: Mapping[str, str | bool | int | None],
     ) -> Items[SpaceTask]:
         return await self._request(Items[SpaceTask], "GET", "tasks", params=params)
+
+    async def add_task(self, values: Mapping[str, str]) -> SpaceTask:
+        task: dict[str, Any] = {
+            "markdown": values["markdown"],
+            "location": {"type": "document", "documentId": values["documentId"]},
+        }
+        info = {key: values[key] for key in ("scheduleDate", "deadlineDate") if key in values}
+        if info:
+            task["taskInfo"] = info
+        result = operations.single(
+            await self._request(Items[SpaceTask], "POST", "tasks", body={"tasks": [task]})
+        )
+        if not result.id:
+            raise CraftError(
+                "craft_upstream_error", "Craft returned an invalid task ID.", outcome_unknown=True
+            )
+        return result
+
+    async def update_task(self, task_id: str, values: Mapping[str, str]) -> SpaceTask:
+        task: dict[str, Any] = {"id": task_id}
+        if "markdown" in values:
+            task["markdown"] = values["markdown"]
+        info = {
+            key: values[key] for key in ("state", "scheduleDate", "deadlineDate") if key in values
+        }
+        if info:
+            task["taskInfo"] = info
+        result = operations.single(
+            await self._request(Items[SpaceTask], "PUT", "tasks", body={"tasksToUpdate": [task]})
+        )
+        if result.id != task_id:
+            raise CraftError(
+                "craft_upstream_error",
+                "Craft returned an unexpected task ID.",
+                outcome_unknown=True,
+            )
+        return result
+
+    async def delete_task(self, task_id: str) -> DeletedResource:
+        return operations.deleted(
+            await self._request(
+                Items[DeletedResource], "DELETE", "tasks", body={"idsToDelete": [task_id]}
+            ),
+            task_id,
+        )
 
     async def list_documents(
         self, params: Mapping[str, str | bool | int | None]

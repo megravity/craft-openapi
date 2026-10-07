@@ -18,6 +18,9 @@ SPACE_OPERATION_IDS = frozenset(
     {
         "craft_space_list_folders",
         "craft_space_list_tasks",
+        "craft_space_add_task",
+        "craft_space_update_task",
+        "craft_space_delete_task",
         "craft_space_list_documents",
         "craft_space_search_documents",
         "craft_space_create_document",
@@ -327,6 +330,11 @@ class Settings(BaseSettings):
                             "update_block_markdown",
                             "delete_block",
                         )
+                    )
+                if adapter == "space" and targets.documentIds:
+                    allowed.update(
+                        f"craft_space_{suffix}"
+                        for suffix in ("add_task", "update_task", "delete_task")
                     )
                 if adapter == "daily":
                     allowed.update(

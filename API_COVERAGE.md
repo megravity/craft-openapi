@@ -2,7 +2,7 @@
 
 ## Baseline and sources
 
-Inventory audited **2026-10-06** against the **unreleased working tree after 0.4.0** (`bd9b08e` release baseline), targeting 0.5.0. This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
+Inventory audited **2026-10-07** against the **unreleased working tree after 0.4.0** (`bd9b08e` release baseline), targeting 0.5.0. This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
 
 | Adapter | Local reference | Reference version | Public documentation |
 |---|---|---|---|
@@ -10,7 +10,7 @@ Inventory audited **2026-10-06** against the **unreleased working tree after 0.4
 | Multi-Document | [Multi-Document API](craft-docs/documents-api-docs.md) | 1.0.0 | [Selected Documents](https://connect.craft.do/api-docs/documents/) |
 | Daily Notes | [Daily Notes API](craft-docs/daily-notes-api-docs.md) | 1.0.0 | [Daily Notes and Tasks](https://connect.craft.do/api-docs/daily-notes/) |
 
-The local exports do not record their original retrieval dates. Counts and classifications below use those local references; current public-documentation parity was not revalidated in this audit. Refresh references before adding operations or claiming complete coverage. Preserve each adapter's scope even where upstream paths match.
+The local exports do not record their original retrieval dates. Counts and classifications below use those local references; Space task-write payloads were additionally checked against the public documentation on 2026-10-07; public parity for the remaining rows was not revalidated in this audit. Refresh references before adding operations or claiming complete coverage. Preserve each adapter's scope even where upstream paths match.
 
 ## Status and counting rules
 
@@ -25,12 +25,12 @@ Count upstream **method/path pairs separately per adapter**. Multiple wrapper ro
 
 | Adapter | Documented pairs | I | P | D | Represented pairs (I + P) | Public wrapper operations |
 |---|---:|---:|---:|---:|---:|---:|
-| Space | 44 | 2 | 13 | 29 | 15 | 16 |
+| Space | 44 | 2 | 16 | 26 | 18 | 19 |
 | Multi-Document | 33 | 1 | 11 | 21 | 12 | 13 |
 | Daily Notes | 36 | 2 | 13 | 21 | 15 | 19 |
-| **Total** | **113** | **5** | **37** | **71** | **42** | **48** |
+| **Total** | **113** | **5** | **40** | **68** | **45** | **51** |
 
-The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown read splits and Daily Notes date/ID route splits account for the difference between 42 represented upstream pairs and 48 public operations.
+The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown read splits and Daily Notes date/ID route splits account for the difference between 45 represented upstream pairs and 51 public operations.
 
 ## Upstream endpoint grid
 
@@ -73,9 +73,9 @@ Each cell is independent. See the public mappings and contract notes below for I
 | `GET /blocks/search` | D | D | D |
 | `GET /documents/search` | P | P | N/A |
 | `GET /tasks` | I | N/A | I |
-| `POST /tasks` | D | N/A | P |
-| `DELETE /tasks` | D | N/A | P |
-| `PUT /tasks` | D | N/A | P |
+| `POST /tasks` | P | N/A | P |
+| `DELETE /tasks` | P | N/A | P |
+| `PUT /tasks` | P | N/A | P |
 | `POST /upload` | D | D | D |
 | `POST /whiteboards` | D | D | D |
 | `GET /whiteboards/{whiteboardBlockId}/elements` | D | D | D |
@@ -95,6 +95,9 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 | Operation ID | Wrapper method/path | Upstream method/path | Contract | JSON response model |
 |---|---|---|---|---|
 | `craft_space_list_tasks` | `GET /v1/space/tasks` | `GET /tasks` | [T5](#t5) | `Items[SpaceTask]` |
+| `craft_space_add_task` | `POST /v1/space/tasks` | `POST /tasks` | [T6](#t6) | `SpaceTask` |
+| `craft_space_update_task` | `PATCH /v1/space/tasks/{taskId}` | `PUT /tasks` | [T7](#t7) | `SpaceTask` |
+| `craft_space_delete_task` | `DELETE /v1/space/tasks/{taskId}` | `DELETE /tasks` | [T8](#t8) | `DeletedResource` |
 | `craft_space_list_folders` | `GET /v1/space/folders` | `GET /folders` | [F1](#f1) | `Items[Folder]` |
 | `craft_space_list_documents` | `GET /v1/space/documents` | `GET /documents` | [L1](#l1) | `Items[DocumentSummary]` |
 | `craft_space_search_documents` | `GET /v1/space/documents/search` | `GET /documents/search` | [S1](#s1) | `Items[DocumentSearchHit]` |
@@ -260,7 +263,19 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 
 ### T5
 
-**Space task discovery — I.** `SpaceTaskFilters` exposes active/upcoming/inbox/logbook/document/all with `documentId` required only for document scope. `Items[SpaceTask]` preserves ID, Markdown, state/schedule/deadline, location type/title/document/date, and completion/cancellation timestamps. `all` includes unscheduled document tasks and is broader than the union of Daily scopes. This supplies read-only migration inventory; Space task writes remain deferred.
+**Space task discovery — I.** `SpaceTaskFilters` exposes active/upcoming/inbox/logbook/document/all with `documentId` required only for document scope. `Items[SpaceTask]` preserves ID, Markdown, state/schedule/deadline, location type/title/document/date, and completion/cancellation timestamps. `all` includes unscheduled document tasks and is broader than the union of Daily scopes. This supplies read-only migration inventory; write support is documented in T6–T8.
+
+### T6
+
+**Space task creation — P.** `AddSpaceTask` requires documentId/Markdown and accepts optional schedule/deadline dates. Wraps one task with `location:{type:"document",documentId}` and optional taskInfo; unwraps one `SpaceTask`, status 201. All modes verify the document root freshly; planner requires an approved target. Inbox/daily-note targets, creation state overrides and batch writes are not exposed.
+
+### T7
+
+**Space task updates — P.** Shared `UpdateTask` accepts nonempty Markdown/state/schedule/deadline changes, rejecting explicit nulls and extra fields. Required `SpaceTaskWriteContext.documentId` identifies the approved root in profile mode. Full structural reads exclude collection subtrees and link/property IDs; fresh document-scope native-task discovery verifies the target really is a task. Maps to singleton `tasksToUpdate`, nesting state/dates in taskInfo and omitting location. Partial `SpaceTask` results are accepted only with the matching ID. Movement, clearing, inbox/daily-note Space selectors and batches remain unavailable.
+
+### T8
+
+**Space task deletion — P.** Required documentId context plus the T7 proofs, including in legacy mode. Only leaf text tasks are deletable; nested content is protected. Sends singleton `{idsToDelete:[taskId]}`, validates the returned ID, and returns `{id}` with status 200. Python tools require confirmation. Proof and submission share the overall deadline, expiry is rechecked, and failures after submission retain uncertain outcomes without retries. This does not expose broad native-task deletion across Space locations.
 
 ### T2
 
@@ -293,7 +308,7 @@ The D cells above have no public operation IDs or wrapper request/response model
 | Connection info | Verify metadata/timezone/link-template shapes per adapter; never expose connection credentials. |
 | In-document search | Preserve Space `blockId`, Multi-Document `documentId`, and Daily Notes `date` selectors. Verify regex semantics and context limits. |
 | Comments | The references document adding comments, not a general comment CRUD API. |
-| Space task writes | Discovery covers all six scopes. Creation/update/movement/native deletion require their own Space location contracts; scheduled tasks outside Daily may still need Craft/MCP. |
+| Space task extensions | Document-scoped singleton writes are present. Other Space location selectors, movement, date clearing and batch variants remain deferred; live verification of the new writes is pending. |
 | Reminders | Verify availability/ownership and required connection authorization separately; implement documented cursors and invalid-cursor behavior explicitly. |
 | Uploads | Verify binary content negotiation and query fields; revisit appropriate limits without silently truncating payloads. |
 | Whiteboards | Verify creation positions, element/assets/appState shapes, limits, and mutation semantics. |
@@ -308,7 +323,8 @@ These links identify automated regression coverage already present in the reposi
 | All Multi-Document mappings, including L2/C5/S1 | [test_documents_api.py](tests/test_documents_api.py): `test_operation_contracts`, invalid filters, string boundary, connection isolation; [test_documents_client.py](tests/test_documents_client.py): include/exclude/default forwarding, deletion status, metadata, opaque IDs. |
 | All Daily Notes mappings, including C6/S2/T1–T4 | [test_daily_api.py](tests/test_daily_api.py): `test_daily_operation_contracts`, invalid queries/writes, task scopes, uncertain singleton results, client isolation; [test_daily_client.py](tests/test_daily_client.py): ID encoding and selector separation. |
 | B1/C1/C4 modeled responses and S1 result preservation | [test_space_api.py](tests/test_space_api.py): nested rows/previews, dynamic values/date strings; [test_space_client.py](tests/test_space_client.py): option objects, sparse schemas, malformed rows, known-field projection, extra/repeated search results. Names containing `live` still use mocks. |
-| Public tool mappings/workflows | [test_openwebui_tool.py](tests/test_openwebui_tool.py): exact 13/11/17 function sets, all mappings, Daily Notes date/task workflow, validation forwarding and permissions. |
+| Space task writes T6–T8 | [test_space_tasks.py](tests/test_space_tasks.py): exact payloads/headers, independent connection, role/target/native membership checks, partial/singleton outcomes, deadlines, expiry, and the profile tool confirmation workflow. |
+| Public tool mappings/workflows | [test_openwebui_tool.py](tests/test_openwebui_tool.py): exact current function sets, all mappings, Daily Notes date/task workflow, validation forwarding and permissions. |
 | Configuration/OpenAPI | [test_openapi.py](tests/test_openapi.py), [test_documents_api.py](tests/test_documents_api.py), [test_daily_api.py](tests/test_daily_api.py): configured-adapter route sets, presets, 404s for disabled routes, all seven connection combinations, bearer auth, valid OpenAPI, secret redaction. |
 | Experimental profiles and deletion | [test_profiles.py](tests/test_profiles.py), [test_planning_operations.py](tests/test_planning_operations.py), [test_openwebui_profiles.py](tests/test_openwebui_profiles.py): profile/target/credential isolation, schema combinations, combined deadlines, copy-only migration, fresh membership, exact deletion mappings, protected block shapes, confirmation failures, captured requests, and reviewed-copy workflow. |
 | Shared transport/errors | [test_transport.py](tests/test_transport.py): deadlines, phase/network failures, decoding, size limits, sanitized error mapping, Retry-After, and no retries. |

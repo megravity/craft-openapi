@@ -83,6 +83,8 @@ Collection writes require an approved `collectionId`. When properties are suppli
 
 Space/Multi-Document insertion and block updates in profile mode require owning `documentId` in the query. The wrapper reads that approved root with `maxDepth=-1`, checks the returned root ID and structure, and locates the target only through actual content. IDs embedded in Markdown, links, or properties are not authority. Collection subtrees/items are excluded from document-edit permissions.
 
+Space native-task creation requires `documentId` in the body; updates/deletion require it in the query in every mode. Planner enables these operations only with approved Space document roots. Read-only/migration cannot write tasks. Each existing task is checked in the full document structure (excluding collections/links) and fresh native `scope=document` discovery. Deletion allows only leaf text tasks; nested content is protected. Roots and verification lists must be valid/unambiguous, and expiry is rechecked before submission. Use Daily for inbox/daily-note targets; Space task movement and date clearing remain unsupported.
+
 Daily ID-based insertion/updates in profile mode require owning `date` context. Date insertion still defaults to today. Native Daily task writes use Craft's Daily connection scope; they do not require a document/date context parameter.
 
 All leaf-block deletion calls require context, including legacy mode. Only leaf text blocks are deletable; roots, pages, collections, whiteboards, media, descendants, and incomplete reads are protected. Deleting a collection row also removes its nested notes.
@@ -107,7 +109,7 @@ See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin
 
 User-reported Open WebUI checks passed for Space planner collection creation/property updates, scoped text insertion/updates, canceled/approved deletion, and denial of an unapproved collection. Daily planner checks passed for inbox-task creation with scheduling/deadline fields, rescheduling with unrelated fields preserved, completion/logbook read-back, cancellation with the task retained, and approved deletion verified by listing plus `craft_not_found` on the exact block ID. One creation returned a timeout with an uncertain outcome; inspection found exactly one task and no write retry was made. The latency cause remains unconfirmed.
 
-These checks cover the installed tool at that point, not every adapter/permission scenario. The newer visible-status/invalid-callback distinction still needs an installed-tool smoke check. Space task writes and collection-title editing remain unavailable; this pilot does not establish complete MCP replacement.
+These checks cover the installed tool at that point, not every adapter/permission scenario. The newer visible-status/invalid-callback distinction still needs an installed-tool smoke check. The newer Space task writes still need live verification, and collection-title editing remains unavailable; this pilot does not establish complete MCP replacement.
 
 ## Delivery checkpoints
 
@@ -117,7 +119,7 @@ These checks cover the installed tool at that point, not every adapter/permissio
 | 1. Read-only profiles | Configuration, credentials, profile schema/capabilities, expiry, and legacy isolation implemented. |
 | 2. Planner/migration scope | Target checks and combined deadlines implemented. Migration remains copy-only. |
 | 3. Python-tool safeguards | Profile discovery and fail-closed confirmation implemented, including existing Daily task deletion. |
-| 4. Space task discovery | All six documented scopes and location/completion metadata implemented; no Space task writes. |
+| 4. Space task discovery | All six discovery scopes implemented; the follow-up adds approved-document creation/updates and verified leaf-task deletion. Inbox/daily-note Space targets, movement and clearing stay unavailable. |
 | 5. Collection-item deletion | Singleton deletion across three adapters, membership checks, and dialog integration implemented. |
 | 6. Leaf-block deletion | Scoped structural/type checks and dialog integration implemented across three adapters. |
 | 7. Title editing | Unavailable: verification gate did not pass for both title-column shapes. No undocumented workaround. |

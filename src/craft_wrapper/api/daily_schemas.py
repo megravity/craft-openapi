@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from craft_wrapper.api.schemas import BlockDepth, CraftDate, InputModel, NonemptyText
+from craft_wrapper.api.schemas import UpdateTask as UpdateTask
 
 
 class DailyNoteSelector(InputModel):
@@ -65,19 +66,4 @@ class AddTask(InputModel):
             raise ValueError("Explicit nulls and date clearing are unsupported")
         if self.target == "inbox" and self.date is not None:
             raise ValueError("date requires target=daily_note")
-        return self
-
-
-class UpdateTask(InputModel):
-    markdown: NonemptyText | None = None
-    state: Literal["todo", "done", "canceled"] | None = None
-    scheduleDate: CraftDate | None = None
-    deadlineDate: CraftDate | None = None
-
-    @model_validator(mode="after")
-    def nonempty_changes(self) -> "UpdateTask":
-        if not self.model_fields_set:
-            raise ValueError("Provide at least one task change")
-        if any(getattr(self, field) is None for field in self.model_fields_set):
-            raise ValueError("Explicit nulls and date clearing are unsupported")
         return self

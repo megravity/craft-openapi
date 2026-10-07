@@ -667,3 +667,53 @@ class Tools:
         return await self._request(
             "GET", "/v1/space/tasks", parameters, operation_id="craft_space_list_tasks"
         )
+
+    async def craft_space_add_task(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Create one native task in an approved document; use Daily for inbox/daily-note targets.
+
+        :param body: JSON object with required documentId (root API ID) and markdown;
+            optional scheduleDate/deadlineDate (YYYY-MM-DD or today/tomorrow/yesterday).
+            Dates are resolved by Craft. No location overrides, nulls or automatic retries.
+        """
+        return await self._request(
+            "POST", "/v1/space/tasks", body=body, operation_id="craft_space_add_task"
+        )
+
+    async def craft_space_update_task(
+        self, taskId: str, body: dict[str, Any], parameters: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Edit, reschedule, complete or cancel one task in a freshly verified approved document.
+
+        :param taskId: Exact native task ID from discovery/creation.
+        :param body: At least one of markdown, state (todo/done/canceled), scheduleDate,
+            deadlineDate. Omitted fields are preserved. No nulls, clearing or movement.
+        :param parameters: Required owning documentId query context in every mode.
+        """
+        return await self._request(
+            "PATCH",
+            f"/v1/space/tasks/{self._id(taskId)}",
+            parameters,
+            body,
+            operation_id="craft_space_update_task",
+        )
+
+    async def craft_space_delete_task(
+        self,
+        taskId: str,
+        parameters: dict[str, Any],
+        __event_call__=None,
+        __event_emitter__=None,
+    ) -> dict[str, Any]:
+        """Delete one verified leaf task in an approved document after a live confirmation dialog.
+
+        :param taskId: Exact native task ID. Tasks with nested content cannot be deleted.
+        :param parameters: Required owning documentId query context in every mode.
+        """
+        return await self._request(
+            "DELETE",
+            f"/v1/space/tasks/{self._id(taskId)}",
+            parameters,
+            event_call=__event_call__,
+            event_emitter=__event_emitter__,
+            operation_id="craft_space_delete_task",
+        )
