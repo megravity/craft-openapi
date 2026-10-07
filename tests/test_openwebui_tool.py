@@ -188,7 +188,16 @@ def test_all_operation_mappings(
         pytest.skip("Operation is not implemented by this adapter")
     calls = []
 
+    async def confirm(event):
+        return True
+
+    if method == "DELETE":
+        arguments = {**arguments, "__event_call__": confirm}
+
     def handler(request):
+        if method == "DELETE" and request.method == "GET":
+            assert request.url.path == "/v1/" + adapter(tool) + "/blocks/task"
+            return httpx.Response(200, json={"id": "task", "type": "text", "markdown": "Task"})
         calls.append(request)
         assert request.method == method
         assert request.url.host == "wrapper.test"
@@ -435,7 +444,7 @@ def test_private_request_logging_suppressed_and_filter_removed(
 def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == {"space": 13, "documents": 11, "daily": 17}[adapter(tool)]
+    assert len(public) == {"space": 17, "documents": 14, "daily": 20}[adapter(tool)]
     assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
     method = operation(tool, "list_documents")
     hints = get_type_hints(method)
@@ -661,6 +670,11 @@ def test_daily_date_content_and_task_workflows(tool_module, tool, settings, monk
         body = json.loads(request.content) if request.content else {}
         if path == "blocks":
             if request.method == "GET":
+                if "id" in request.url.params:
+                    assert dict(request.url.params) == {"id": "native-task", "maxDepth": "0"}
+                    return httpx.Response(
+                        200, json={"id": "native-task", "type": "text", "markdown": "Example"}
+                    )
                 assert dict(request.url.params) == {"date": "today", "maxDepth": "1"}
                 return httpx.Response(200, json={"id": "daily-root", "type": "page", "content": []})
             if request.method == "POST":
@@ -728,7 +742,12 @@ def test_daily_date_content_and_task_workflows(tool_module, tool, settings, monk
             assert updated_task["response"] == {"id": "native-task", "taskInfo": {"state": "done"}}
             listed = await tool.craft_daily_list_tasks({"scope": "logbook"})
             assert listed["response"]["items"][0]["taskInfo"]["state"] == "done"
-            deleted = await tool.craft_daily_delete_task(task_id)
+
+            async def confirm(event):
+                assert event["type"] == "confirmation"
+                return True
+
+            deleted = await tool.craft_daily_delete_task(task_id, __event_call__=confirm)
             assert deleted["response"] == {"id": "native-task"}
             empty = await tool.craft_daily_list_tasks({"scope": "inbox"})
             assert empty["response"]["items"] == []
@@ -737,4 +756,4 @@ def test_daily_date_content_and_task_workflows(tool_module, tool, settings, monk
             assert "body" not in invalid["request"]
 
     asyncio.run(run())
-    assert len(calls) == 8
+    assert len(calls) == 9

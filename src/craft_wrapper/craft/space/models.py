@@ -2,7 +2,7 @@ from pydantic import Field
 
 from craft_wrapper.craft.models import CollectionSchema as CollectionSchema
 from craft_wrapper.craft.models import CollectionSummary as CollectionSummary
-from craft_wrapper.craft.models import CraftModel
+from craft_wrapper.craft.models import CraftModel, TaskInfo
 from craft_wrapper.craft.models import DocumentSearchHit as DocumentSearchHit
 
 
@@ -24,3 +24,19 @@ class DocumentSummary(CraftModel):
         description="Craft navigation link. Its documentId can differ from the API id; "
         "use id for API requests rather than extracting an ID from this link.",
     )
+
+
+class TaskLocation(CraftModel):
+    type: str
+    title: str | None = None
+    documentId: str | None = None
+    date: str | None = None
+
+
+class SpaceTask(CraftModel):
+    id: str
+    markdown: str | None = None
+    taskInfo: TaskInfo | None = None
+    location: TaskLocation | None = None
+    completedAt: str | None = None
+    canceledAt: str | None = None

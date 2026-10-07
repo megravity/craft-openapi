@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Read [PROJECT.md](PROJECT.md) for context and documentation links.
+Read [PROJECT.md](PROJECT.md) for context and documentation links. Use [API_COVERAGE.md](API_COVERAGE.md) for current gaps and [PROFILES.md](PROFILES.md) before changing permission or write behavior.
 
 ## Project Structure & Architecture
 
@@ -44,4 +44,4 @@ Use patch releases for compatible fixes and minor releases for capabilities. Doc
 
 ## Security & Configuration
 
-Never commit `.env`, `.portainer-webhook`, connection URLs, tokens, personal identifiers, or captured private content. Use generic fixtures and sanitized errors/logs. Keep redirects and automatic retries disabled. Server permissions remain authoritative; tool visibility is not authorization. Distinguish roadmap proposals from implemented capabilities.
+Never commit `.env`, `.portainer-webhook`, connection URLs, tokens, personal identifiers, or captured private content. Use generic fixtures and sanitized errors/logs. Keep redirects and automatic retries disabled. Server permissions remain authoritative; tool visibility and Open WebUI dialogs are not server authorization. Keep profile target verification fresh, exclude collection subtrees from block permissions, and fail closed before mutation if verification fails. Distinguish roadmap proposals from implemented capabilities.

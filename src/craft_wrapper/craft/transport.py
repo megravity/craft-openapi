@@ -2,6 +2,8 @@ import asyncio
 import json
 import math
 from collections.abc import Mapping
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -12,6 +14,16 @@ from craft_wrapper.craft.errors import CraftError, redact
 from craft_wrapper.craft.query import query_params
 
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+
+@dataclass
+class RequestOutcome:
+    submitted: bool = False
+
+
+request_outcome: ContextVar[RequestOutcome | None] = ContextVar(
+    "craft_request_outcome", default=None
+)
 
 
 def retry_after_seconds(value: str | None) -> int | None:
@@ -56,6 +68,9 @@ class CraftTransport:
         upstream_status = None
         try:
             async with asyncio.timeout(self.deadline_seconds):
+                outcome = request_outcome.get()
+                if write and outcome is not None:
+                    outcome.submitted = True
                 async with self.client.stream(
                     method,
                     path,

@@ -9,6 +9,14 @@ class DailyNoteSelector(InputModel):
     date: CraftDate = "today"
 
 
+class DailyWriteContext(InputModel):
+    date: CraftDate | None = Field(
+        default=None,
+        description="Owning daily-note date. Required for profile-scoped ID writes "
+        "and all leaf-block deletions; used for structural verification only.",
+    )
+
+
 class DailyNoteRead(DailyNoteSelector, BlockDepth):
     pass
 

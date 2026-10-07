@@ -46,7 +46,7 @@ def test_openapi_valid_and_exact_operation_set(settings, preset):
     validate(spec)
     assert spec["openapi"] == "3.1.0"
     ops = operations(spec)
-    assert len(ops) == 13
+    assert len(ops) == 16
     assert {op["operationId"] for op in ops} == OPERATION_IDS
     assert all(op["security"] == [{"WrapperBearer": []}] for op in ops)
     assert all(op["description"] and op["summary"] for op in ops)
@@ -70,6 +70,7 @@ def test_openapi_valid_and_exact_operation_set(settings, preset):
 
 READ_ONLY_IDS = {
     "craft_space_list_folders",
+    "craft_space_list_tasks",
     "craft_space_list_documents",
     "craft_space_search_documents",
     "craft_space_get_block",
@@ -258,6 +259,7 @@ def test_environment_overrides_dotenv(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("WRAPPER_API_TOKEN", "environment-token")
     settings = Settings(_env_file=env)
+    assert settings.wrapper_api_token is not None
     assert settings.wrapper_api_token.get_secret_value() == "environment-token"
     assert "file-secret" not in repr(settings)
     assert "environment-token" not in repr(settings)
@@ -276,6 +278,7 @@ def test_load_settings_resolves_required_values_from_sources(tmp_path, monkeypat
     settings = load_settings()
     assert settings.craft_space_base_url is not None
     assert settings.craft_space_base_url.get_secret_value().endswith("/links/file-secret/api/v1")
+    assert settings.wrapper_api_token is not None
     assert settings.wrapper_api_token.get_secret_value() == "environment-token"
 
 

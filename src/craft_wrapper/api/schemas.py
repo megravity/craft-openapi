@@ -120,6 +120,17 @@ class CollectionFilters(InputModel):
     documentId: Identifier | None = None
 
 
+class SpaceTaskFilters(InputModel):
+    scope: Literal["active", "upcoming", "inbox", "logbook", "document", "all"]
+    documentId: Identifier | None = None
+
+    @model_validator(mode="after")
+    def document_scope(self) -> "SpaceTaskFilters":
+        if (self.scope == "document") != (self.documentId is not None):
+            raise ValueError("documentId is required only for scope=document")
+        return self
+
+
 class CreateDocument(InputModel):
     title: NonemptyText
     folderId: Identifier | None = None
@@ -143,6 +154,14 @@ class InsertMarkdown(InputModel):
 
 class UpdateMarkdown(InputModel):
     markdown: StrictStr = Field(description="Replacement Markdown for one existing text block.")
+
+
+class DocumentWriteContext(InputModel):
+    documentId: Identifier | None = Field(
+        default=None,
+        description="Owning document root ID. Required for profile-scoped block "
+        "writes and all leaf-block deletions; verified against fresh structure.",
+    )
 
 
 PropertyValues = dict[Identifier, StrictStr]

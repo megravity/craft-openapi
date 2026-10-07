@@ -10,6 +10,7 @@ from craft_wrapper.craft.models import (
     CollectionItem,
     CollectionSchema,
     CollectionSummary,
+    DeletedResource,
     DocumentSearchHit,
     Items,
 )
@@ -82,6 +83,12 @@ class DocumentsClient:
         return await operations.update_collection_item_properties(
             self.transport, collection_id, item_id, properties
         )
+
+    async def delete_block(self, block_id: str) -> DeletedResource:
+        return await operations.delete_block(self.transport, block_id)
+
+    async def delete_collection_item(self, collection_id: str, item_id: str) -> DeletedResource:
+        return await operations.delete_collection_item(self.transport, collection_id, item_id)
 
 
 def document_scope(

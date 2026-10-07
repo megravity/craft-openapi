@@ -8,6 +8,10 @@ class CraftModel(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
 
 
+class DeletedResource(CraftModel):
+    id: str
+
+
 class Block(CraftModel):
     id: str
     type: str
@@ -96,3 +100,9 @@ class CollectionSchema(CraftModel):
         default=None, description="Title-property metadata, when supplied by Craft."
     )
     properties: list[CollectionProperty]
+
+
+class TaskInfo(CraftModel):
+    state: str | None = None
+    scheduleDate: str | None = None
+    deadlineDate: str | None = None

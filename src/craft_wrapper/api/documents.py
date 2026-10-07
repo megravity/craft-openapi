@@ -8,10 +8,12 @@ from craft_wrapper.api.documents_schemas import (
     DocumentsFilters,
     DocumentsSearchFilters,
 )
+from craft_wrapper.api.permissions import authorize_write
 from craft_wrapper.api.responses import ERROR_RESPONSES
 from craft_wrapper.api.schemas import (
     AddCollectionItem,
     BlockDepth,
+    DocumentWriteContext,
     Identifier,
     InsertMarkdown,
     ItemDepth,
@@ -26,6 +28,7 @@ from craft_wrapper.craft.models import (
     CollectionItem,
     CollectionSchema,
     CollectionSummary,
+    DeletedResource,
     DocumentSearchHit,
     Items,
 )
@@ -124,7 +127,14 @@ def make_router() -> APIRouter:
         "rather than replacing it. Writes are never retried; outcomeUnknown "
         "means content may already have been inserted.",
     )
-    async def insert_markdown(pageId: Identifier, body: InsertMarkdown, client: Client):
+    async def insert_markdown(
+        pageId: Identifier,
+        body: InsertMarkdown,
+        client: Client,
+        request: Request,
+        context: Annotated[DocumentWriteContext, Query()],
+    ):
+        await authorize_write(request)
         return await client.insert_markdown(pageId, body.markdown, body.position)
 
     @router.patch(
@@ -138,7 +148,14 @@ def make_router() -> APIRouter:
         "replacement. Craft validates the target's suitability. Writes are "
         "never retried; outcomeUnknown means the update may have happened.",
     )
-    async def update_block(blockId: Identifier, body: UpdateMarkdown, client: Client):
+    async def update_block(
+        blockId: Identifier,
+        body: UpdateMarkdown,
+        client: Client,
+        request: Request,
+        context: Annotated[DocumentWriteContext, Query()],
+    ):
+        await authorize_write(request)
         return await client.update_block_markdown(blockId, body.markdown)
 
     @router.get(
@@ -203,7 +220,10 @@ def make_router() -> APIRouter:
         "V1 does not support relations or complex values. Writes are never "
         "retried; outcomeUnknown means the item may already have been created.",
     )
-    async def add_item(collectionId: Identifier, body: AddCollectionItem, client: Client):
+    async def add_item(
+        collectionId: Identifier, body: AddCollectionItem, client: Client, request: Request
+    ):
+        await authorize_write(request)
         return await client.add_collection_item(collectionId, body.title, body.properties)
 
     @router.patch(
@@ -223,7 +243,45 @@ def make_router() -> APIRouter:
         itemId: Identifier,
         body: UpdateCollectionProperties,
         client: Client,
+        request: Request,
     ):
+        await authorize_write(request)
         return await client.update_collection_item_properties(collectionId, itemId, body.properties)
+
+    @router.delete(
+        "/collections/{collectionId}/items/{itemId}",
+        operation_id="craft_documents_delete_collection_item",
+        response_model=DeletedResource,
+        summary="Delete one collection item and its nested content",
+        description="Delete one row by IDs from collection discovery/item reads. This also removes "
+        "nested content. Profile writes require an approved collection and verified membership. "
+        "Open WebUI Python tools require confirmation; raw API calls do not. "
+        "No retries or rollback.",
+    )
+    async def delete_item(
+        collectionId: Identifier, itemId: Identifier, client: Client, request: Request
+    ):
+        await authorize_write(request)
+        return await client.delete_collection_item(collectionId, itemId)
+
+    @router.delete(
+        "/blocks/{blockId}",
+        operation_id="craft_documents_delete_block",
+        response_model=DeletedResource,
+        summary="Delete one leaf text block",
+        description="Delete only a leaf text block from a verified document/note structure. "
+        "Requires owning documentId context, including in legacy mode. "
+        "Roots, pages, collections, media, descendants, and incomplete reads are rejected. "
+        "Open WebUI Python tools require confirmation; raw API calls do not. "
+        "No retries or rollback.",
+    )
+    async def delete_block(
+        blockId: Identifier,
+        client: Client,
+        request: Request,
+        context: Annotated[DocumentWriteContext, Query()],
+    ):
+        await authorize_write(request)
+        return await client.delete_block(blockId)
 
     return router

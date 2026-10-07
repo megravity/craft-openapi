@@ -6,15 +6,17 @@ requirements: httpx
 """
 
 import asyncio
+import copy
 import json
 import logging
-from typing import Any
-from urllib.parse import quote, urlsplit
+from typing import Any, Literal
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_RESPONSE_BYTES = 9 * 1024 * 1024
+CONFIRMATION_TIMEOUT_SECONDS = 120
 
 
 class _WrapperRequestLogFilter(logging.Filter):
@@ -42,6 +44,10 @@ class Tools:
         WRAPPER_URL: str = Field(
             default="http://craft-wrapper:8000",
             description="Wrapper origin reachable from Open WebUI; not a Craft connection URL.",
+        )
+        WRAPPER_PROFILE: Literal["", "read-only", "planner", "migration"] = Field(
+            default="",
+            description="Experimental profile; empty uses legacy routes. Token must match.",
         )
         WRAPPER_API_TOKEN: str = Field(
             default="",
@@ -84,13 +90,16 @@ class Tools:
             raise ValueError("Resource IDs must be nonempty strings other than . or ..")
         return quote(value, safe="")
 
-    async def _request(
+    async def _http_request(
         self,
         method: str,
         path: str,
         parameters: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
+        *,
+        valves=None,
     ) -> dict[str, Any]:
+        valves = valves or self.valves
         request: dict[str, Any] = {"method": method, "path": path, "query": {}}
         status = None
         request_id = None
@@ -108,7 +117,7 @@ class Tools:
             }
 
         submitted = False
-        token = self.valves.WRAPPER_API_TOKEN
+        token = valves.WRAPPER_API_TOKEN
         if not token or any(c.isspace() for c in token):
             return failure("tool_configuration_error", "Set WRAPPER_API_TOKEN to the token alone.")
         try:
@@ -124,21 +133,27 @@ class Tools:
                     query[key] = str(value).lower() if isinstance(value, bool) else str(value)
             # Unknown query keys and body fields reach the wrapper for its own validation.
             request["query"] = query
-            origin = self.valves.WRAPPER_URL
+            origin = valves.WRAPPER_URL
             log_filter = _WrapperRequestLogFilter(origin)
             logger = logging.getLogger("httpx")
             logger.addFilter(log_filter)
             try:
-                async with asyncio.timeout(self.valves.TIMEOUT_SECONDS):
+                async with asyncio.timeout(valves.TIMEOUT_SECONDS):
                     async with httpx.AsyncClient(
-                        timeout=httpx.Timeout(self.valves.TIMEOUT_SECONDS, connect=5),
+                        timeout=httpx.Timeout(valves.TIMEOUT_SECONDS, connect=5),
                         follow_redirects=False,
                         trust_env=False,
                     ) as client:
                         submitted = True
                         async with client.stream(
                             method,
-                            origin + path,
+                            origin
+                            + (
+                                f"/profiles/{valves.WRAPPER_PROFILE}"
+                                if valves.WRAPPER_PROFILE
+                                else ""
+                            )
+                            + path,
                             params=query,
                             json=body,
                             headers={
@@ -186,6 +201,183 @@ class Tools:
         except (TypeError, ValueError, UnicodeError):
             return failure("tool_invalid_response", "Invalid JSON arguments or wrapper response.")
 
+    @staticmethod
+    def _blocked(method: str, path: str, code: str, message: str) -> dict[str, Any]:
+        error: dict[str, Any] = {"code": code, "message": message}
+        if method != "GET":
+            error["outcomeUnknown"] = False
+        return {
+            "request": {"method": method, "path": path, "query": {}},
+            "statusCode": None,
+            "requestId": None,
+            "response": {"error": error},
+        }
+
+    async def _capabilities(self, valves) -> dict[str, Any]:
+        if valves.WRAPPER_PROFILE:
+            return await self._http_request("GET", "/capabilities", valves=valves)
+        result = await self._http_request("GET", "/openapi.json", valves=valves)
+        if result["statusCode"] != 200:
+            return result
+        schema = result["response"]
+        try:
+            operations = [
+                operation["operationId"]
+                for path in schema["paths"].values()
+                for method, operation in path.items()
+                if method in {"get", "post", "put", "patch", "delete"}
+            ]
+        except (KeyError, TypeError, AttributeError):
+            return self._blocked(
+                "GET",
+                "/openapi.json",
+                "tool_capabilities_unavailable",
+                "Could not determine enabled wrapper operations.",
+            )
+        result["response"] = {
+            "profileId": None,
+            "operations": operations,
+            "writeTargets": {},
+            "restrictionMode": "legacy",
+        }
+        return result
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        parameters: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+        *,
+        operation_id: str,
+        event_call=None,
+    ) -> dict[str, Any]:
+        valves = self.valves.model_copy(deep=True)
+        try:
+            parameters, body = copy.deepcopy(parameters), copy.deepcopy(body)
+        except (TypeError, ValueError, RecursionError):
+            return self._blocked(method, path, "tool_invalid_arguments", "Invalid JSON arguments.")
+        if (parameters is not None and not isinstance(parameters, dict)) or (
+            body is not None and not isinstance(body, dict)
+        ):
+            return self._blocked(
+                method, path, "tool_invalid_arguments", "Arguments must be JSON objects."
+            )
+        if any(
+            not isinstance(key, str) or not isinstance(value, (str, int, bool, type(None)))
+            for key, value in (parameters or {}).items()
+        ):
+            return self._blocked(
+                method, path, "tool_invalid_arguments", "Query values must be scalar or null."
+            )
+        if valves.WRAPPER_PROFILE:
+            capabilities = await self._capabilities(valves)
+            if capabilities["statusCode"] != 200:
+                return capabilities
+            if capabilities["response"].get("profileId") != valves.WRAPPER_PROFILE:
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_capabilities_unavailable",
+                    "Wrapper capabilities did not match the configured profile.",
+                )
+            operations = capabilities["response"].get("operations")
+            if not isinstance(operations, list) or not all(
+                isinstance(op, str) for op in operations
+            ):
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_capabilities_unavailable",
+                    "Could not determine enabled profile operations.",
+                )
+            if operation_id not in operations:
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_permission_denied",
+                    "This operation is not enabled for this profile.",
+                )
+        if method == "DELETE":
+            if event_call is None:
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_confirmation_required",
+                    "Deletion requires a live Open WebUI confirmation dialog.",
+                )
+            parts = path.split("/")
+            try:
+                if parts[3] == "collections" and parts[5] == "items":
+                    collection_id, resource_id = unquote(parts[4]), unquote(parts[6])
+                    preview = await self._http_request(
+                        "GET", "/".join(parts[:6]), {"maxDepth": 0}, valves=valves
+                    )
+                    resource = next(
+                        item
+                        for item in preview["response"].get("items", [])
+                        if item.get("id") == resource_id
+                    )
+                    label = resource.get("title") or "Untitled row"
+                    consequence = "This deletes the row and all nested item content."
+                    target = f"Collection ID: {collection_id}\nItem ID: {resource_id}"
+                else:
+                    resource_id = unquote(parts[4])
+                    preview = await self._http_request(
+                        "GET",
+                        f"/v1/{parts[2]}/blocks/{parts[4]}",
+                        {"maxDepth": 0},
+                        valves=valves,
+                    )
+                    resource = preview["response"]
+                    if resource.get("id") != resource_id:
+                        raise ValueError("Unreadable target")
+                    label = resource.get("markdown") or "Untitled block/task"
+                    consequence = (
+                        "This deletes the selected task."
+                        if parts[3] == "tasks"
+                        else "This deletes the selected leaf text block."
+                    )
+                    target = f"ID: {resource_id}"
+                if preview["statusCode"] != 200 or not isinstance(label, str):
+                    raise ValueError("Unreadable target")
+            except (KeyError, TypeError, ValueError, StopIteration, IndexError, AttributeError):
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_preview_unavailable",
+                    "Could not read the exact deletion target; nothing was deleted.",
+                )
+            context = "".join(f"\n{key}: {value}" for key, value in (parameters or {}).items())
+            prompt = {
+                "type": "confirmation",
+                "data": {
+                    "title": "Confirm Craft deletion",
+                    "message": f"Profile: {valves.WRAPPER_PROFILE or 'legacy'}\n"
+                    f"Operation: {operation_id}\n{target}{context}\n"
+                    f"Content preview: {label[:400]}\n{consequence} No rollback is promised.",
+                },
+            }
+            try:
+                confirmed = await asyncio.wait_for(
+                    event_call(prompt), timeout=CONFIRMATION_TIMEOUT_SECONDS
+                )
+            except Exception:
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_confirmation_unavailable",
+                    "Confirmation failed or timed out; nothing was deleted.",
+                )
+            if confirmed is not True:
+                return self._blocked(
+                    method,
+                    path,
+                    "tool_confirmation_declined",
+                    "Deletion was not explicitly confirmed; nothing was deleted.",
+                )
+        return await self._http_request(method, path, parameters, body, valves=valves)
+
     async def craft_daily_get_note(
         self, parameters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -194,7 +386,9 @@ class Tools:
         :param parameters: Optional JSON query object with date (default today; YYYY-MM-DD or
             today/tomorrow/yesterday) and maxDepth (default 1; -1 all descendants).
         """
-        return await self._request("GET", "/v1/daily/notes", parameters)
+        return await self._request(
+            "GET", "/v1/daily/notes", parameters, operation_id="craft_daily_get_note"
+        )
 
     async def craft_daily_read_note_markdown(
         self, parameters: dict[str, Any] | None = None
@@ -204,7 +398,12 @@ class Tools:
         :param parameters: Optional JSON query object with date (default today; YYYY-MM-DD or
             today/tomorrow/yesterday) and maxDepth (default 1; -1 all descendants).
         """
-        return await self._request("GET", "/v1/daily/notes/markdown", parameters)
+        return await self._request(
+            "GET",
+            "/v1/daily/notes/markdown",
+            parameters,
+            operation_id="craft_daily_read_note_markdown",
+        )
 
     async def craft_daily_insert_note_markdown(
         self, body: dict[str, Any], parameters: dict[str, Any] | None = None
@@ -217,7 +416,13 @@ class Tools:
         :param parameters: Optional JSON query object with date (YYYY-MM-DD or
             today/tomorrow/yesterday).
         """
-        return await self._request("POST", "/v1/daily/notes/content", parameters, body)
+        return await self._request(
+            "POST",
+            "/v1/daily/notes/content",
+            parameters,
+            body,
+            operation_id="craft_daily_insert_note_markdown",
+        )
 
     async def craft_daily_search_notes(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """
@@ -226,7 +431,9 @@ class Tools:
             endDate (calendar or relative dates), and fetchBlocks (default false). Regex
                 unsupported.
         """
-        return await self._request("GET", "/v1/daily/notes/search", parameters)
+        return await self._request(
+            "GET", "/v1/daily/notes/search", parameters, operation_id="craft_daily_search_notes"
+        )
 
     async def craft_daily_list_collections(
         self, parameters: dict[str, Any] | None = None
@@ -236,7 +443,9 @@ class Tools:
         :param parameters: Optional JSON query object with startDate/endDate (calendar or relative
             dates). Responses identify the dailyNoteDate; no document or folder filters.
         """
-        return await self._request("GET", "/v1/daily/collections", parameters)
+        return await self._request(
+            "GET", "/v1/daily/collections", parameters, operation_id="craft_daily_list_collections"
+        )
 
     async def craft_daily_list_tasks(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """
@@ -246,7 +455,9 @@ class Tools:
             active/upcoming use schedule date, otherwise deadline; logbook holds
                 done/canceled tasks.
         """
-        return await self._request("GET", "/v1/daily/tasks", parameters)
+        return await self._request(
+            "GET", "/v1/daily/tasks", parameters, operation_id="craft_daily_list_tasks"
+        )
 
     async def craft_daily_add_task(self, body: dict[str, Any]) -> dict[str, Any]:
         """
@@ -256,7 +467,9 @@ class Tools:
                 scheduleDate/deadlineDate
             accept calendar or relative dates. Explicit nulls unsupported.
         """
-        return await self._request("POST", "/v1/daily/tasks", body=body)
+        return await self._request(
+            "POST", "/v1/daily/tasks", body=body, operation_id="craft_daily_add_task"
+        )
 
     async def craft_daily_update_task(self, taskId: str, body: dict[str, Any]) -> dict[str, Any]:
         """
@@ -265,15 +478,25 @@ class Tools:
         :param body: Nonempty JSON object with markdown, state (todo/done/canceled), scheduleDate,
             and/or deadlineDate. Omitted fields preserved; null clearing and movement unsupported.
         """
-        return await self._request("PATCH", f"/v1/daily/tasks/{self._id(taskId)}", body=body)
+        return await self._request(
+            "PATCH",
+            f"/v1/daily/tasks/{self._id(taskId)}",
+            body=body,
+            operation_id="craft_daily_update_task",
+        )
 
-    async def craft_daily_delete_task(self, taskId: str) -> dict[str, Any]:
+    async def craft_daily_delete_task(self, taskId: str, __event_call__=None) -> dict[str, Any]:
         """
         Delete one native task from daily notes, inbox, or logbook; this does not mark it done.
         No rollback or automatic retry. Do not blindly repeat an outcomeUnknown deletion.
         :param taskId: Task ID from list_tasks or add_task.
         """
-        return await self._request("DELETE", f"/v1/daily/tasks/{self._id(taskId)}")
+        return await self._request(
+            "DELETE",
+            f"/v1/daily/tasks/{self._id(taskId)}",
+            event_call=__event_call__,
+            operation_id="craft_daily_delete_task",
+        )
 
     async def craft_daily_get_block(
         self, blockId: str, parameters: dict[str, Any] | None = None
@@ -284,7 +507,12 @@ class Tools:
         :param blockId: API id from document/block discovery, not a navigation-link ID.
         :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
         """
-        return await self._request("GET", f"/v1/daily/blocks/{self._id(blockId)}", parameters)
+        return await self._request(
+            "GET",
+            f"/v1/daily/blocks/{self._id(blockId)}",
+            parameters,
+            operation_id="craft_daily_get_block",
+        )
 
     async def craft_daily_read_markdown(
         self, blockId: str, parameters: dict[str, Any] | None = None
@@ -296,37 +524,58 @@ class Tools:
         :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
         """
         return await self._request(
-            "GET", f"/v1/daily/blocks/{self._id(blockId)}/markdown", parameters
+            "GET",
+            f"/v1/daily/blocks/{self._id(blockId)}/markdown",
+            parameters,
+            operation_id="craft_daily_read_markdown",
         )
 
     async def craft_daily_insert_markdown(
-        self, pageId: str, body: dict[str, Any]
+        self, pageId: str, body: dict[str, Any], parameters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
         Insert Markdown into one existing page; adds content and may create multiple blocks.
         :param pageId: API root/page ID from document or block discovery.
         :param body: JSON object with nonempty markdown; position defaults to end (or use start).
+
+        :param parameters: Owning date context required for profile-scoped writes.
         """
         return await self._request(
-            "POST", f"/v1/daily/blocks/{self._id(pageId)}/content", body=body
+            "POST",
+            f"/v1/daily/blocks/{self._id(pageId)}/content",
+            parameters=parameters,
+            body=body,
+            operation_id="craft_daily_insert_markdown",
         )
 
     async def craft_daily_update_block_markdown(
-        self, blockId: str, body: dict[str, Any]
+        self, blockId: str, body: dict[str, Any], parameters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
         Replace Markdown on one text block while preserving other fields.
         :param blockId: Editable text-block ID from structured block reads.
         :param body: JSON object with markdown string. Empty string allowed; other fields rejected.
+
+        :param parameters: Owning date context required for profile-scoped writes.
         """
-        return await self._request("PATCH", f"/v1/daily/blocks/{self._id(blockId)}", body=body)
+        return await self._request(
+            "PATCH",
+            f"/v1/daily/blocks/{self._id(blockId)}",
+            parameters=parameters,
+            body=body,
+            operation_id="craft_daily_update_block_markdown",
+        )
 
     async def craft_daily_get_collection_schema(self, collectionId: str) -> dict[str, Any]:
         """
         Discover property keys/types/options before writing. Schema and views remain unchanged.
         :param collectionId: Collection ID from list_collections, not its parent document ID.
         """
-        return await self._request("GET", f"/v1/daily/collections/{self._id(collectionId)}/schema")
+        return await self._request(
+            "GET",
+            f"/v1/daily/collections/{self._id(collectionId)}/schema",
+            operation_id="craft_daily_get_collection_schema",
+        )
 
     async def craft_daily_list_collection_items(
         self, collectionId: str, parameters: dict[str, Any] | None = None
@@ -338,7 +587,10 @@ class Tools:
         :param parameters: Optional JSON query object with maxDepth (default 0; -1 all descendants).
         """
         return await self._request(
-            "GET", f"/v1/daily/collections/{self._id(collectionId)}/items", parameters
+            "GET",
+            f"/v1/daily/collections/{self._id(collectionId)}/items",
+            parameters,
+            operation_id="craft_daily_list_collection_items",
         )
 
     async def craft_daily_add_collection_item(
@@ -351,7 +603,10 @@ class Tools:
             values only. Relations, arrays, booleans, numbers and null writes are unsupported.
         """
         return await self._request(
-            "POST", f"/v1/daily/collections/{self._id(collectionId)}/items", body=body
+            "POST",
+            f"/v1/daily/collections/{self._id(collectionId)}/items",
+            body=body,
+            operation_id="craft_daily_add_collection_item",
         )
 
     async def craft_daily_update_collection_item_properties(
@@ -369,4 +624,46 @@ class Tools:
             "PATCH",
             f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}",
             body=body,
+            operation_id="craft_daily_update_collection_item_properties",
+        )
+
+    async def craft_daily_get_capabilities(self) -> dict[str, Any]:
+        """Discover enabled operations and writable targets; visibility is not authorization."""
+        return await self._capabilities(self.valves.model_copy(deep=True))
+
+    async def craft_daily_delete_collection_item(
+        self,
+        collectionId: str,
+        itemId: str,
+        __event_call__=None,
+    ) -> dict[str, Any]:
+        """Delete one row and its nested content after a live confirmation dialog.
+
+        :param collectionId: Collection ID from discovery; must be writable for this profile.
+        :param itemId: Exact item ID from collection reads.
+        """
+        return await self._request(
+            "DELETE",
+            f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}",
+            event_call=__event_call__,
+            operation_id="craft_daily_delete_collection_item",
+        )
+
+    async def craft_daily_delete_block(
+        self,
+        blockId: str,
+        parameters: dict[str, Any],
+        __event_call__=None,
+    ) -> dict[str, Any]:
+        """Delete one verified leaf text block after a live confirmation dialog.
+
+        :param blockId: Exact leaf text-block ID; root/page/collection/media deletion is rejected.
+        :param parameters: Owning date context, required in every mode.
+        """
+        return await self._request(
+            "DELETE",
+            f"/v1/daily/blocks/{self._id(blockId)}",
+            parameters,
+            event_call=__event_call__,
+            operation_id="craft_daily_delete_block",
         )

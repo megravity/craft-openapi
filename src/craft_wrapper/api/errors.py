@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from time import perf_counter
 from uuid import uuid4
@@ -10,6 +11,7 @@ from starlette.routing import Match
 
 from craft_wrapper.api.schemas import ErrorDetail, ErrorInfo, ErrorResponse
 from craft_wrapper.craft.errors import CraftError, redact
+from craft_wrapper.craft.transport import RequestOutcome, request_outcome
 
 logger = logging.getLogger("craft_wrapper.requests")
 MAX_REQUEST_BYTES = 1024 * 1024
@@ -62,6 +64,16 @@ async def validation_error_handler(request: Request, error: RequestValidationErr
 
 
 async def http_error_handler(request: Request, error: HTTPException) -> JSONResponse:
+    if error.status_code == 403:
+        expired = error.detail == "profile_expired"
+        return error_response(
+            403,
+            request.state.request_id,
+            "profile_expired" if expired else "permission_denied",
+            "This profile has expired."
+            if expired
+            else "This profile does not permit this operation or target.",
+        )
     # A disabled POST may share its URL with an enabled GET. Still return 404 for
     # that disabled operation instead of the router's default 405.
     if error.status_code == 405 and any(
@@ -136,7 +148,26 @@ class RequestMiddleware:
                 delivered = True
                 return {"type": "http.request", "body": bytes(body), "more_body": False}
 
-            await self.app(scope, replay, capture)
+            outcome = RequestOutcome()
+            context_token = request_outcome.set(outcome)
+            try:
+                if scope["method"] in {"POST", "PATCH", "PUT", "DELETE"}:
+                    async with asyncio.timeout(scope["app"].state.settings.craft_timeout_seconds):
+                        await self.app(scope, replay, capture)
+                else:
+                    await self.app(scope, replay, capture)
+            except TimeoutError:
+                if started:
+                    raise
+                await error_response(
+                    504,
+                    state["request_id"],
+                    "craft_timeout",
+                    "Craft request timed out.",
+                    **({"outcomeUnknown": True} if outcome.submitted else {}),
+                )(scope, receive, capture)
+            finally:
+                request_outcome.reset(context_token)
         except Exception:
             # Avoid traceback/exception strings: they can embed request data or a secret URL.
             if not started:
@@ -147,9 +178,11 @@ class RequestMiddleware:
             route = scope.get("route")
             operation_id = getattr(route, "operation_id", None) or "infrastructure_or_unmatched"
             logger.info(
-                "requestId=%s operationId=%s durationMs=%.1f status=%s upstreamStatus=%s",
+                "requestId=%s operationId=%s profileId=%s durationMs=%.1f "
+                "status=%s upstreamStatus=%s",
                 state["request_id"],
                 operation_id,
+                state.get("profile_id", "legacy"),
                 (perf_counter() - start) * 1000,
                 status,
                 state.get("upstream_status"),

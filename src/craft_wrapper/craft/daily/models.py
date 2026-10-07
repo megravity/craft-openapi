@@ -1,4 +1,5 @@
-from craft_wrapper.craft.models import Block, CraftModel
+from craft_wrapper.craft.models import Block, CraftModel, DeletedResource
+from craft_wrapper.craft.models import TaskInfo as TaskInfo
 
 
 class DailyNoteSearchHit(CraftModel):
@@ -15,17 +16,11 @@ class DailyCollectionSummary(CraftModel):
     dailyNoteDate: str
 
 
-class TaskInfo(CraftModel):
-    state: str | None = None
-    scheduleDate: str | None = None
-    deadlineDate: str | None = None
-
-
 class Task(CraftModel):
     id: str
     markdown: str | None = None
     taskInfo: TaskInfo | None = None
 
 
-class DeletedTask(CraftModel):
-    id: str
+class DeletedTask(DeletedResource):
+    pass

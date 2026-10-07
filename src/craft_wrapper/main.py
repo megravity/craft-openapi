@@ -17,6 +17,7 @@ from craft_wrapper.api.errors import (
     http_error_handler,
     validation_error_handler,
 )
+from craft_wrapper.api.profiles import ProfileGuard, add_capabilities
 from craft_wrapper.api.space import make_router as make_space_router
 from craft_wrapper.config import Settings, load_settings
 from craft_wrapper.craft.daily.client import DailyClient
@@ -32,6 +33,12 @@ class SecretLogFilter(logging.Filter):
         self.secrets = secrets
 
     def filter(self, record: logging.LogRecord) -> bool:
+        # HTTPX's structured request log includes content-search queries and resource IDs.
+        # The wrapper's own request logger already records safe operational metadata.
+        if isinstance(record.args, tuple) and any(
+            isinstance(arg, httpx.URL) for arg in record.args
+        ):
+            return False
         record.msg = redact(record.getMessage(), self.secrets)
         record.args = ()
         # Avoid unfiltered tracebacks containing an upstream URL.
@@ -48,6 +55,7 @@ def create_app(
     daily_upstream_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings if settings is not None else load_settings()
+    profile_apps: list[FastAPI] = []
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     logging.getLogger("craft_wrapper.requests").setLevel(logging.INFO)
 
@@ -105,6 +113,13 @@ def create_app(
                             daily_upstream_transport,
                         )
                     )
+                for child in profile_apps:
+                    for adapter in settings.configured_adapters:
+                        setattr(
+                            child.state,
+                            f"{adapter}_client",
+                            getattr(app.state, f"{adapter}_client"),
+                        )
                 yield
         finally:
             http_logger.removeFilter(secret_filter)
@@ -125,22 +140,49 @@ def create_app(
     )
     app.state.settings = settings
     app.add_middleware(RequestMiddleware)
-    app.exception_handler(CraftError)(craft_error_handler)
-    app.exception_handler(RequestValidationError)(validation_error_handler)
-    app.exception_handler(HTTPException)(http_error_handler)
-    app.state.disabled_routes = []
-    for router in (make_space_router(), make_documents_router(), make_daily_router()):
-        app.state.disabled_routes.extend(
-            route
-            for route in router.routes
-            if isinstance(route, APIRoute) and route.operation_id not in settings.enabled_operations
-        )
-        router.routes[:] = [
-            route
-            for route in router.routes
-            if not isinstance(route, APIRoute) or route.operation_id in settings.enabled_operations
-        ]
-        app.include_router(router)
+
+    def configure(target: FastAPI, operations: frozenset[str], profile_id: str | None = None):
+        target.state.settings = settings
+        target.state.profile_id = profile_id
+        target.exception_handler(CraftError)(craft_error_handler)
+        target.exception_handler(RequestValidationError)(validation_error_handler)
+        target.exception_handler(HTTPException)(http_error_handler)
+        target.state.disabled_routes = []
+        denied_routes: list[APIRoute] = []
+        for router in (make_space_router(), make_documents_router(), make_daily_router()):
+            for route in router.routes:
+                if isinstance(route, APIRoute) and route.operation_id not in operations:
+                    target.state.disabled_routes.append(route)
+                    if route.operation_id in settings.enabled_operations:
+                        denied_routes.append(route)
+            router.routes[:] = [
+                route
+                for route in router.routes
+                if isinstance(route, APIRoute) and route.operation_id in operations
+            ]
+            target.include_router(router)
+        if profile_id:
+            target.add_middleware(ProfileGuard, profile_id=profile_id, denied_routes=denied_routes)
+            add_capabilities(target, profile_id)
+
+    configure(app, frozenset() if settings.profile_mode else settings.enabled_operations)
+    if settings.profile_mode:
+        for name, profile in settings.profiles.items():
+            if not profile.enabled:
+                continue
+            prefix = f"/profiles/{name}"
+            child = FastAPI(
+                title=f"Craft HTTP tools — {name}",
+                version=app.version,
+                root_path_in_servers=False,
+                description="Experimental server-enforced operation and write-target profile. "
+                "Deletion dialogs are an Open WebUI Python-tool safeguard, not API approval.",
+                servers=[{"url": (settings.wrapper_public_url or "") + prefix}],
+                redoc_url=None,
+            )
+            configure(child, settings.profile_operations(name), name)
+            profile_apps.append(child)
+            app.mount(prefix, child)
 
     @app.get("/health", include_in_schema=False)
     async def health():

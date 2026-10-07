@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add opt-in experimental read-only, planner, and expiring copy-only migration profiles with separate tokens, schemas/capabilities, approved write targets, and no legacy-route bypass.
+- Verify collection membership and owning document/note structure before scoped writes, excluding collection subtrees and unsupported relation/complex property writes; share the overall verification/submission deadline.
+- Add profile-aware Open WebUI tools, capability discovery, and captured-request deletion confirmations that fail closed without an explicit live approval.
+- Add Space task discovery and singleton collection-item/leaf-text deletion across adapters, with protected root/type checks and uncertain-outcome handling.
+- Document reviewed backlog copies, source-ID duplicate checks, explicit scheduled-task linkage, and sanitized Portainer profile setup. Title editing remains deferred: its HTTP payload worked for a default title column but was rejected for a named column; both scratch rows were restored.
+- Keep release metadata at 0.4.0; the next capability release is expected to be 0.5.0.
+
 ## 0.4.0 — 2026-10-04
 
 - Add 17 Daily Notes operations and a standalone Open WebUI tool, including date-based content, scoped collection items, and native task listing/creation/update/deletion. Support all seven connection combinations with independent clients and configured-adapter allowlists.

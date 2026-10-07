@@ -10,7 +10,13 @@ from craft_wrapper.craft.daily.models import (
     DeletedTask,
     Task,
 )
-from craft_wrapper.craft.models import Block, CollectionItem, CollectionSchema, Items
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
+    CollectionSchema,
+    DeletedResource,
+    Items,
+)
 from craft_wrapper.craft.transport import CraftTransport
 
 
@@ -90,10 +96,11 @@ class DailyClient:
         )
 
     async def delete_task(self, task_id: str) -> DeletedTask:
-        return operations.single(
+        return operations.deleted(
             await self._request(
                 Items[DeletedTask], "DELETE", "tasks", body={"idsToDelete": [task_id]}
-            )
+            ),
+            task_id,
         )
 
     async def get_block(self, block_id: str, max_depth: int = 1) -> Block:
@@ -131,3 +138,9 @@ class DailyClient:
         return await operations.update_collection_item_properties(
             self.transport, collection_id, item_id, properties
         )
+
+    async def delete_block(self, block_id: str) -> DeletedResource:
+        return await operations.delete_block(self.transport, block_id)
+
+    async def delete_collection_item(self, collection_id: str, item_id: str) -> DeletedResource:
+        return await operations.delete_collection_item(self.transport, collection_id, item_id)

@@ -1,0 +1,18 @@
+{
+  "observedOn": "2026-10-06",
+  "candidate": {"itemsToUpdate": [{"id": "scratch-row", "title": "Changed probe title"}]},
+  "defaultColumn": {
+    "before": {"id": "scratch-row", "title": "Original title", "properties": {"probe": "Preserved"}, "content": [{"id": "nested-text", "type": "text", "markdown": "Preserved content"}]},
+    "titleChanged": true,
+    "propertiesAndContentPreserved": true,
+    "restored": true
+  },
+  "namedColumn": {
+    "before": {"id": "scratch-row", "task": "Original title", "properties": {"probe": "Preserved"}, "content": [{"id": "nested-text", "type": "text", "markdown": "Preserved content"}]},
+    "wrapperErrorCode": "craft_rejected_request",
+    "titleChanged": false,
+    "propertiesAndContentPreserved": true,
+    "restored": true
+  },
+  "gatePassed": false
+}

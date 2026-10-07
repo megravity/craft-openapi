@@ -4,13 +4,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from craft_wrapper.craft import operations
-from craft_wrapper.craft.models import Block, CollectionItem, Items
+from craft_wrapper.craft.models import Block, CollectionItem, DeletedResource, Items
 from craft_wrapper.craft.space.models import (
     CollectionSchema,
     CollectionSummary,
     DocumentSearchHit,
     DocumentSummary,
     Folder,
+    SpaceTask,
 )
 from craft_wrapper.craft.transport import CraftTransport
 
@@ -26,6 +27,12 @@ class SpaceClient:
 
     async def list_folders(self) -> Items[Folder]:
         return await self._request(Items[Folder], "GET", "folders")
+
+    async def list_tasks(
+        self,
+        params: Mapping[str, str | bool | int | None],
+    ) -> Items[SpaceTask]:
+        return await self._request(Items[SpaceTask], "GET", "tasks", params=params)
 
     async def list_documents(
         self, params: Mapping[str, str | bool | int | None]
@@ -100,3 +107,9 @@ class SpaceClient:
     @staticmethod
     def _single[M: BaseModel](result: Items[M]) -> M:
         return operations.single(result)
+
+    async def delete_block(self, block_id: str) -> DeletedResource:
+        return await operations.delete_block(self.transport, block_id)
+
+    async def delete_collection_item(self, collection_id: str, item_id: str) -> DeletedResource:
+        return await operations.delete_collection_item(self.transport, collection_id, item_id)

@@ -2,7 +2,7 @@
 
 ## Baseline and sources
 
-Inventory audited **2026-10-06** against release **0.4.0** (`bd9b08e`). This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
+Inventory audited **2026-10-06** against the **unreleased working tree after 0.4.0** (`bd9b08e` release baseline), targeting 0.5.0. This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
 
 | Adapter | Local reference | Reference version | Public documentation |
 |---|---|---|---|
@@ -25,12 +25,12 @@ Count upstream **method/path pairs separately per adapter**. Multiple wrapper ro
 
 | Adapter | Documented pairs | I | P | D | Represented pairs (I + P) | Public wrapper operations |
 |---|---:|---:|---:|---:|---:|---:|
-| Space | 44 | 2 | 10 | 32 | 12 | 13 |
-| Multi-Document | 33 | 2 | 8 | 23 | 10 | 11 |
-| Daily Notes | 36 | 3 | 10 | 23 | 13 | 17 |
-| **Total** | **113** | **7** | **28** | **78** | **35** | **41** |
+| Space | 44 | 2 | 13 | 29 | 15 | 16 |
+| Multi-Document | 33 | 1 | 11 | 21 | 12 | 13 |
+| Daily Notes | 36 | 2 | 13 | 21 | 15 | 19 |
+| **Total** | **113** | **5** | **37** | **71** | **42** | **48** |
 
-The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown read splits and Daily Notes date/ID route splits account for the difference between 35 represented upstream pairs and 41 public operations.
+The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown read splits and Daily Notes date/ID route splits account for the difference between 42 represented upstream pairs and 48 public operations.
 
 ## Upstream endpoint grid
 
@@ -40,12 +40,12 @@ Each cell is independent. See the public mappings and contract notes below for I
 |---|---|---|---|
 | `GET /blocks` | P | P | P |
 | `POST /blocks` | P | P | P |
-| `DELETE /blocks` | D | D | D |
+| `DELETE /blocks` | P | P | P |
 | `PUT /blocks` | P | P | P |
 | `PUT /blocks/move` | D | D | D |
-| `GET /collections/{collectionId}/items` | I | I | I |
+| `GET /collections/{collectionId}/items` | P | P | P |
 | `POST /collections/{collectionId}/items` | P | P | P |
-| `DELETE /collections/{collectionId}/items` | D | D | D |
+| `DELETE /collections/{collectionId}/items` | P | P | P |
 | `PUT /collections/{collectionId}/items` | P | P | P |
 | `PUT /collections/{collectionId}/active-view` | D | D | D |
 | `GET /collections/{collectionId}/views` | D | D | D |
@@ -72,7 +72,7 @@ Each cell is independent. See the public mappings and contract notes below for I
 | `PUT /folders/move` | D | N/A | N/A |
 | `GET /blocks/search` | D | D | D |
 | `GET /documents/search` | P | P | N/A |
-| `GET /tasks` | D | N/A | I |
+| `GET /tasks` | I | N/A | I |
 | `POST /tasks` | D | N/A | P |
 | `DELETE /tasks` | D | N/A | P |
 | `PUT /tasks` | D | N/A | P |
@@ -86,7 +86,7 @@ Each cell is independent. See the public mappings and contract notes below for I
 
 ## Public operation mappings
 
-Paths below include the adapter prefix. Each operation ID is also a function in that adapter's standalone Open WebUI tool. The contract key links to supported input models/parameters, translation, and remaining gaps; regression evidence is listed under Verification evidence. Response model names refer to the adapter's models; the two `DocumentSummary` classes are distinct. `Items[T]` is a JSON `{items: [...]}` envelope.
+Paths below include the legacy adapter prefix. Profile mounts prepend `/profiles/{profileId}` and expose only their effective operations. Capability endpoints and the three Python capability-discovery functions are infrastructure, excluded from these counts. Each operation ID is also a function in that adapter's standalone Open WebUI tool. The contract key links to supported input models/parameters, translation, and remaining gaps; regression evidence is listed under Verification evidence. Response model names refer to the adapter's models; the two `DocumentSummary` classes are distinct. `Items[T]` is a JSON `{items: [...]}` envelope.
 
 ### Space
 
@@ -94,6 +94,7 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 
 | Operation ID | Wrapper method/path | Upstream method/path | Contract | JSON response model |
 |---|---|---|---|---|
+| `craft_space_list_tasks` | `GET /v1/space/tasks` | `GET /tasks` | [T5](#t5) | `Items[SpaceTask]` |
 | `craft_space_list_folders` | `GET /v1/space/folders` | `GET /folders` | [F1](#f1) | `Items[Folder]` |
 | `craft_space_list_documents` | `GET /v1/space/documents` | `GET /documents` | [L1](#l1) | `Items[DocumentSummary]` |
 | `craft_space_search_documents` | `GET /v1/space/documents/search` | `GET /documents/search` | [S1](#s1) | `Items[DocumentSearchHit]` |
@@ -107,6 +108,9 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 | `craft_space_list_collection_items` | `GET /v1/space/collections/{collectionId}/items` | `GET /collections/{collectionId}/items` | [C1](#c1) | `Items[CollectionItem]` |
 | `craft_space_add_collection_item` | `POST /v1/space/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_space_update_collection_item_properties` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
+| `craft_space_delete_collection_item` | `DELETE /v1/space/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
+| `craft_space_delete_block` | `DELETE /v1/space/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
+
 
 ### Multi-Document
 
@@ -125,6 +129,9 @@ Sources: [routes](src/craft_wrapper/api/documents.py), [client](src/craft_wrappe
 | `craft_documents_list_collection_items` | `GET /v1/documents/collections/{collectionId}/items` | `GET /collections/{collectionId}/items` | [C1](#c1) | `Items[CollectionItem]` |
 | `craft_documents_add_collection_item` | `POST /v1/documents/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_documents_update_collection_item_properties` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
+| `craft_documents_delete_collection_item` | `DELETE /v1/documents/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
+| `craft_documents_delete_block` | `DELETE /v1/documents/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
+
 
 ### Daily Notes
 
@@ -149,14 +156,9 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 | `craft_daily_add_task` | `POST /v1/daily/tasks` | `POST /tasks` | [T2](#t2) | `Task` |
 | `craft_daily_update_task` | `PATCH /v1/daily/tasks/{taskId}` | `PUT /tasks` | [T3](#t3) | `Task` |
 | `craft_daily_delete_task` | `DELETE /v1/daily/tasks/{taskId}` | `DELETE /tasks` | [T4](#t4) | `DeletedTask` |
+| `craft_daily_delete_collection_item` | `DELETE /v1/daily/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
+| `craft_daily_delete_block` | `DELETE /v1/daily/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
-## Supported contracts and remaining gaps
-
-Input types live in [shared/Space schemas](src/craft_wrapper/api/schemas.py), [Multi-Document schemas](src/craft_wrapper/api/documents_schemas.py), and [Daily Notes schemas](src/craft_wrapper/api/daily_schemas.py). Response types live in [common models](src/craft_wrapper/craft/models.py) and the [Space](src/craft_wrapper/craft/space/models.py), [Multi-Document](src/craft_wrapper/craft/documents/models.py), and [Daily Notes](src/craft_wrapper/craft/daily/models.py) model modules. Matching mappings use [operations.py](src/craft_wrapper/craft/operations.py).
-
-All incoming models reject unknown fields. IDs are opaque nonempty strings; path IDs are safely encoded. Supported dates are valid calendar dates or `today`/`tomorrow`/`yesterday`, forwarded unchanged. Absolute reversed ranges are rejected. Upstream parsing ignores unmodeled fields; public serialization returns modeled fields, so this is not a lossless proxy. Block content, nested collection rows, previews, dynamic property values, and scoped `invalid:out_of_scope` markers are retained when modeled/returned.
-
-Reads/updates/deletion return 200; document/item/task creation and Markdown insertion return 201. Singleton writes wrap upstream arrays and reject zero/multiple results, with uncertain-outcome handling. These adaptations do not create transactions or retry safety.
 
 ### B1
 
@@ -176,9 +178,15 @@ Reads/updates/deletion return 200; document/item/task creation and Markdown inse
 
 **Gaps:** batch updates and non-Markdown fields, including the documented `font` example, are not exposed. This updates one existing text block, not an entire document.
 
+### B4
+
+**Leaf-block deletion — P in all adapters.** One ID maps to upstream `DELETE /blocks` with `{blockIds:[id]}`, returning `{id}` after exact singleton/ID checks. All modes require owning document/date context and a fresh full structural read. Only non-root leaf text blocks are deletable; collection subtrees, pages, media, descendants, and incomplete/ambiguous verification reads are rejected. Python tools require explicit live confirmation; raw authorized API clients do not.
+
+**Gaps:** upstream batch/subtree/root deletion is intentionally unavailable. Context/read verification is a wrapper safeguard, not atomic authorization under concurrent Craft moves. Errors after submission retain uncertain outcomes and no retries.
+
 ### C1
 
-**Collection-item reads — I in all adapters.** `Identifier` plus `ItemDepth` forwards `maxDepth` (default 0; `-1` supported), returning `Items[CollectionItem]`. Dynamic JSON properties include scalar, array, and object values; nested content/previews are modeled. There is no documented cursor or view-execution parameter. The shallower default and modeled response projection are intentional adaptations.
+**Collection-item reads — P in all adapters.** `Identifier` plus `ItemDepth` forwards `maxDepth` (default 0; `-1` supported), returning `Items[CollectionItem]`. Dynamic JSON properties include scalar, array, and object values; nested content/previews are modeled. There is no documented cursor or view-execution parameter. The shallower default and modeled response projection are intentional adaptations. The title probe also observed a named headline returned under `task` instead of `title`; the shared item model does not expose that dynamic headline key. This known projection gap requires separately verified normalization; do not claim full named-column response parity.
 
 ### C2
 
@@ -190,7 +198,7 @@ Reads/updates/deletion return 200; document/item/task creation and Markdown inse
 
 **Collection-item updates — P in all adapters.** `Identifier` for collection/item plus nonempty `UpdateCollectionProperties` maps PATCH to `PUT .../items` with `{itemsToUpdate:[{id,properties}]}`. Omitted properties are preserved; response is one possibly sparse `CollectionItem`.
 
-**Gaps/boundaries:** no batch updates; string-valued property changes only. Title updates, relations, and clearing are not promised by the wrapper or inferred from the examples; verify upstream support before adding them.
+**Gaps/boundaries:** no batch updates; string-valued property changes only. Profile property writes verify schema field types and deny relations/block links/unknown complex types before submission. A live scratch probe updated/restored a default title column, but the same `itemsToUpdate:[{id,title}]` payload was rejected for an explicitly named column. No title-edit endpoint is exposed. Other title updates, relations, and clearing are not inferred from examples; verify upstream support before adding them.
 
 ### C4
 
@@ -207,6 +215,12 @@ Reads/updates/deletion return 200; document/item/task creation and Markdown inse
 ### C6
 
 **Daily Notes collection discovery — I.** `DailyDateRange` forwards optional `startDate`/`endDate` and returns `Items[DailyCollectionSummary]` with `dailyNoteDate`, not `documentId`. This covers the documented filters; it neither executes stored views nor fabricates pagination.
+
+### C7
+
+**Collection-item deletion — P in all adapters.** One collection/item ID maps to upstream DELETE items with `{idsToDelete:[id]}`, returning `{id}`. Fresh properties-only reads verify membership, including legacy calls. Profile targets must be approved; deletion also removes nested row content. Python confirmation previews warn about this consequence. Zero/multiple/wrong-ID/malformed results are uncertain write failures.
+
+**Gap:** documented multiple-ID deletion is not exposed. No rollback, automatic retries, or server-verified approval are promised.
 
 ### F1
 
@@ -244,6 +258,10 @@ Reads/updates/deletion return 200; document/item/task creation and Markdown inse
 
 **Daily Notes task discovery — I.** `TaskFilters` requires one of active/upcoming/inbox/logbook and returns `Items[Task]` with ID, optional Markdown, and optional state/schedule/deadline information. Returned state strings remain unchanged. Space's document/all scopes are not Daily Notes gaps; they belong to its separately deferred task endpoint.
 
+### T5
+
+**Space task discovery — I.** `SpaceTaskFilters` exposes active/upcoming/inbox/logbook/document/all with `documentId` required only for document scope. `Items[SpaceTask]` preserves ID, Markdown, state/schedule/deadline, location type/title/document/date, and completion/cancellation timestamps. `all` includes unscheduled document tasks and is broader than the union of Daily scopes. This supplies read-only migration inventory; Space task writes remain deferred.
+
 ### T2
 
 **Daily Notes task creation — P.** `AddTask` accepts Markdown, inbox/daily-note target, and optional schedule/deadline dates. A daily-note target defaults its date to today; inbox plus date and explicit nulls are rejected. It maps to `tasks:[{markdown,location,taskInfo?}]` and unwraps `Task`; date fields are nested in `taskInfo`.
@@ -275,7 +293,7 @@ The D cells above have no public operation IDs or wrapper request/response model
 | Connection info | Verify metadata/timezone/link-template shapes per adapter; never expose connection credentials. |
 | In-document search | Preserve Space `blockId`, Multi-Document `documentId`, and Daily Notes `date` selectors. Verify regex semantics and context limits. |
 | Comments | The references document adding comments, not a general comment CRUD API. |
-| Space tasks | Implement all six scopes, including document/all, with Space-specific locations. `all` is broader than the union of the four Daily Notes scopes. |
+| Space task writes | Discovery covers all six scopes. Creation/update/movement/native deletion require their own Space location contracts; scheduled tasks outside Daily may still need Craft/MCP. |
 | Reminders | Verify availability/ownership and required connection authorization separately; implement documented cursors and invalid-cursor behavior explicitly. |
 | Uploads | Verify binary content negotiation and query fields; revisit appropriate limits without silently truncating payloads. |
 | Whiteboards | Verify creation positions, element/assets/appState shapes, limits, and mutation semantics. |
@@ -292,12 +310,13 @@ These links identify automated regression coverage already present in the reposi
 | B1/C1/C4 modeled responses and S1 result preservation | [test_space_api.py](tests/test_space_api.py): nested rows/previews, dynamic values/date strings; [test_space_client.py](tests/test_space_client.py): option objects, sparse schemas, malformed rows, known-field projection, extra/repeated search results. Names containing `live` still use mocks. |
 | Public tool mappings/workflows | [test_openwebui_tool.py](tests/test_openwebui_tool.py): exact 13/11/17 function sets, all mappings, Daily Notes date/task workflow, validation forwarding and permissions. |
 | Configuration/OpenAPI | [test_openapi.py](tests/test_openapi.py), [test_documents_api.py](tests/test_documents_api.py), [test_daily_api.py](tests/test_daily_api.py): configured-adapter route sets, presets, 404s for disabled routes, all seven connection combinations, bearer auth, valid OpenAPI, secret redaction. |
+| Experimental profiles and deletion | [test_profiles.py](tests/test_profiles.py), [test_planning_operations.py](tests/test_planning_operations.py), [test_openwebui_profiles.py](tests/test_openwebui_profiles.py): profile/target/credential isolation, schema combinations, combined deadlines, copy-only migration, fresh membership, exact deletion mappings, protected block shapes, confirmation failures, captured requests, and reviewed-copy workflow. |
 | Shared transport/errors | [test_transport.py](tests/test_transport.py): deadlines, phase/network failures, decoding, size limits, sanitized error mapping, Retry-After, and no retries. |
 
-Existing live-probe scope and caveats are recorded in [README](README.md#tests-and-checks). No live Craft requests were made while building this matrix. A model/tool report alone does not establish upstream correctness or automatic-task outcomes.
+Existing live-probe scope and caveats are recorded in [README](README.md#tests-and-checks). Synthetic observations are stored in [title-write-probe.json](tests/fixtures/title-write-probe.json); they contain no live IDs or private payloads. The current feature performed separately authorized scratch-row title probes through MCP/HTTP: the default column passed and restored exactly; the named column rejected the candidate and remained unchanged. Probe IDs, credentials, and captured private payloads are not stored here. A model/tool report alone does not establish upstream correctness or automatic-task outcomes.
 
 ## Keeping the matrix current
 
 For each capability change, update the endpoint status, public mapping, contract notes, and regression evidence together. Recount pairs per adapter and compare every public operation ID/path with routes, presets, and standalone tools. Record the new audit date/code baseline and the reference retrieval date when known. Keep snapshot comparisons separate from deployment verification: a configured server's `/openapi.json` shows only its enabled operations.
 
-Operation presence is complete only when no applicable D rows remain. Full documented-contract support additionally requires resolving P rows and validating response/input variants; intentional restrictions must remain visible rather than being counted as complete. Add new upstream endpoints to the inventory before revising a completeness claim. Permission profiles, factories, and reusable content shapes are separate roadmap work, not substitutes for upstream endpoint coverage.
+Operation presence is complete only when no applicable D rows remain. Full documented-contract support additionally requires resolving P rows and validating response/input variants; intentional restrictions must remain visible rather than being counted as complete. Add new upstream endpoints to the inventory before revising a completeness claim. Experimental permission profiles are implemented but do not count as additional Craft coverage. Profile factories and reusable content shapes remain separate roadmap work.

@@ -4,7 +4,13 @@ from urllib.parse import quote
 from pydantic import BaseModel, ValidationError
 
 from craft_wrapper.craft.errors import CraftError
-from craft_wrapper.craft.models import Block, CollectionItem, CollectionSchema, Items
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
+    CollectionSchema,
+    DeletedResource,
+    Items,
+)
 from craft_wrapper.craft.transport import CraftTransport
 
 
@@ -120,3 +126,44 @@ def single[M: BaseModel](result: Items[M]) -> M:
             outcome_unknown=True,
         )
     return result.items[0]
+
+
+def deleted[M: DeletedResource](result: Items[M], expected_id: str) -> M:
+    resource = single(result)
+    if resource.id != expected_id:
+        raise CraftError(
+            "craft_upstream_error",
+            "Craft returned an unexpected deleted resource.",
+            outcome_unknown=True,
+        )
+    return resource
+
+
+async def delete_block(transport: CraftTransport, block_id: str) -> DeletedResource:
+    return deleted(
+        await request_model(
+            transport,
+            Items[DeletedResource],
+            "DELETE",
+            "blocks",
+            body={"blockIds": [block_id]},
+        ),
+        block_id,
+    )
+
+
+async def delete_collection_item(
+    transport: CraftTransport,
+    collection_id: str,
+    item_id: str,
+) -> DeletedResource:
+    return deleted(
+        await request_model(
+            transport,
+            Items[DeletedResource],
+            "DELETE",
+            f"collections/{segment(collection_id)}/items",
+            body={"idsToDelete": [item_id]},
+        ),
+        item_id,
+    )

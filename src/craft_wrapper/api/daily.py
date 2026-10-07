@@ -10,9 +10,11 @@ from craft_wrapper.api.daily_schemas import (
     DailyNoteRead,
     DailyNoteSelector,
     DailySearchFilters,
+    DailyWriteContext,
     TaskFilters,
     UpdateTask,
 )
+from craft_wrapper.api.permissions import authorize_write
 from craft_wrapper.api.responses import ERROR_RESPONSES
 from craft_wrapper.api.schemas import (
     AddCollectionItem,
@@ -31,7 +33,13 @@ from craft_wrapper.craft.daily.models import (
     DeletedTask,
     Task,
 )
-from craft_wrapper.craft.models import Block, CollectionItem, CollectionSchema, Items
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
+    CollectionSchema,
+    DeletedResource,
+    Items,
+)
 
 
 def get_client(request: Request) -> DailyClient:
@@ -98,8 +106,12 @@ def make_router() -> APIRouter:
         "the content may have been inserted. This does not replace the note.",
     )
     async def insert_note_markdown(
-        body: InsertMarkdown, client: Client, selector: Annotated[DailyNoteSelector, Query()]
+        body: InsertMarkdown,
+        client: Client,
+        selector: Annotated[DailyNoteSelector, Query()],
+        request: Request,
     ):
+        await authorize_write(request)
         return await client.insert_note_markdown(selector.date, body.markdown, body.position)
 
     @router.get(
@@ -182,7 +194,14 @@ def make_router() -> APIRouter:
         "rather than replacing it. Writes are never retried; outcomeUnknown "
         "means content may already have been inserted.",
     )
-    async def insert_markdown(pageId: Identifier, body: InsertMarkdown, client: Client):
+    async def insert_markdown(
+        pageId: Identifier,
+        body: InsertMarkdown,
+        client: Client,
+        request: Request,
+        context: Annotated[DailyWriteContext, Query()],
+    ):
+        await authorize_write(request)
         return await client.insert_markdown(pageId, body.markdown, body.position)
 
     @router.patch(
@@ -196,7 +215,14 @@ def make_router() -> APIRouter:
         "replacement. Craft validates the target's suitability. Writes are "
         "never retried; outcomeUnknown means the update may have happened.",
     )
-    async def update_block(blockId: Identifier, body: UpdateMarkdown, client: Client):
+    async def update_block(
+        blockId: Identifier,
+        body: UpdateMarkdown,
+        client: Client,
+        request: Request,
+        context: Annotated[DailyWriteContext, Query()],
+    ):
+        await authorize_write(request)
         return await client.update_block_markdown(blockId, body.markdown)
 
     @router.get(
@@ -242,7 +268,10 @@ def make_router() -> APIRouter:
         "V1 does not support relations or complex values. Writes are never "
         "retried; outcomeUnknown means the item may already have been created.",
     )
-    async def add_item(collectionId: Identifier, body: AddCollectionItem, client: Client):
+    async def add_item(
+        collectionId: Identifier, body: AddCollectionItem, client: Client, request: Request
+    ):
+        await authorize_write(request)
         return await client.add_collection_item(collectionId, body.title, body.properties)
 
     @router.patch(
@@ -262,7 +291,9 @@ def make_router() -> APIRouter:
         itemId: Identifier,
         body: UpdateCollectionProperties,
         client: Client,
+        request: Request,
     ):
+        await authorize_write(request)
         return await client.update_collection_item_properties(collectionId, itemId, body.properties)
 
     @router.get(
@@ -294,7 +325,8 @@ def make_router() -> APIRouter:
         "Task dates are not timed reminders. Writes are never retried; outcomeUnknown means "
         "the task may already exist.",
     )
-    async def add_task(body: AddTask, client: Client):
+    async def add_task(body: AddTask, client: Client, request: Request):
+        await authorize_write(request)
         return await client.add_task(body.model_dump(exclude_none=True))
 
     @router.patch(
@@ -311,7 +343,8 @@ def make_router() -> APIRouter:
         "date clearing, and task movement are unsupported. Writes are never retried; "
         "outcomeUnknown means the change may have happened. Responses can be partial.",
     )
-    async def update_task(taskId: Identifier, body: UpdateTask, client: Client):
+    async def update_task(taskId: Identifier, body: UpdateTask, client: Client, request: Request):
+        await authorize_write(request)
         return await client.update_task(taskId, body.model_dump(exclude_none=True))
 
     @router.delete(
@@ -324,7 +357,44 @@ def make_router() -> APIRouter:
         "Writes are never retried; outcomeUnknown means deletion may already have happened. "
         "Do not repeat an uncertain deletion blindly.",
     )
-    async def delete_task(taskId: Identifier, client: Client):
+    async def delete_task(taskId: Identifier, client: Client, request: Request):
+        await authorize_write(request)
         return await client.delete_task(taskId)
+
+    @router.delete(
+        "/collections/{collectionId}/items/{itemId}",
+        operation_id="craft_daily_delete_collection_item",
+        response_model=DeletedResource,
+        summary="Delete one collection item and its nested content",
+        description="Delete one row by IDs from collection discovery/item reads. This also removes "
+        "nested content. Profile writes require an approved collection and verified membership. "
+        "Open WebUI Python tools require confirmation; raw API calls do not. "
+        "No retries or rollback.",
+    )
+    async def delete_item(
+        collectionId: Identifier, itemId: Identifier, client: Client, request: Request
+    ):
+        await authorize_write(request)
+        return await client.delete_collection_item(collectionId, itemId)
+
+    @router.delete(
+        "/blocks/{blockId}",
+        operation_id="craft_daily_delete_block",
+        response_model=DeletedResource,
+        summary="Delete one leaf text block",
+        description="Delete only a leaf text block from a verified document/note structure. "
+        "Requires owning date context, including in legacy mode. "
+        "Roots, pages, collections, media, descendants, and incomplete reads are rejected. "
+        "Open WebUI Python tools require confirmation; raw API calls do not. "
+        "No retries or rollback.",
+    )
+    async def delete_block(
+        blockId: Identifier,
+        client: Client,
+        request: Request,
+        context: Annotated[DailyWriteContext, Query()],
+    ):
+        await authorize_write(request)
+        return await client.delete_block(blockId)
 
     return router
