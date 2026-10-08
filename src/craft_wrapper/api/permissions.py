@@ -8,7 +8,7 @@ from starlette.exceptions import HTTPException
 from craft_wrapper.api.auth import ensure_active
 from craft_wrapper.api.schemas import validate_date
 from craft_wrapper.craft.errors import CraftError
-from craft_wrapper.craft.models import Block
+from craft_wrapper.craft.models import Block, CollectionSchema
 from craft_wrapper.craft.transport import CraftTransport
 
 
@@ -68,7 +68,7 @@ async def verified_members(
     return root, structural_members(root)
 
 
-async def authorize_write(request: Request) -> None:
+async def authorize_write(request: Request) -> CollectionSchema | None:
     settings = request.app.state.settings
     profile_id = getattr(request.app.state, "profile_id", None)
     profile = settings.profiles.get(profile_id) if profile_id else None
@@ -111,15 +111,15 @@ async def authorize_write(request: Request) -> None:
 
     collection_id = request.path_params.get("collectionId")
     if collection_id is not None:
+        if profile is not None and collection_id not in profile.targets(adapter).collectionIds:
+            denied()
+        schema = await client.get_collection_schema(collection_id)
         if profile is not None:
-            if collection_id not in profile.targets(adapter).collectionIds:
-                denied()
             # Relations can update reciprocal records outside this target. String-valued
             # input alone is not proof that a property is a simple, local field.
             body = await request.json() if request.method != "DELETE" else {}
             properties = body.get("properties", {})
             if properties:
-                schema = await client.get_collection_schema(collection_id)
                 kinds = {prop.key: prop.type for prop in schema.properties}
                 simple = {
                     "text",
@@ -137,13 +137,19 @@ async def authorize_write(request: Request) -> None:
                     denied()
         item_id = request.path_params.get("itemId")
         if item_id is not None and (
-            profile is not None or operation.endswith("_delete_collection_item")
+            profile is not None
+            or operation.endswith(("_delete_collection_item", "_update_collection_item_title"))
         ):
-            items = await client.list_collection_items(collection_id, 0)
-            if not any(item.id == item_id for item in items.items):
+            items = await client.list_collection_items(collection_id, 0, schema=schema)
+            matches = sum(item.id == item_id for item in items.items)
+            if matches > 1:
+                raise CraftError(
+                    "craft_upstream_error", "Craft returned ambiguous item membership."
+                )
+            if matches == 0:
                 denied()
         ensure_active(request)
-        return
+        return schema
 
     block_id = request.path_params.get("blockId") or request.path_params.get("pageId")
     deletion = operation.endswith("_delete_block")

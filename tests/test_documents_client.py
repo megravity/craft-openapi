@@ -83,6 +83,12 @@ def test_unexpected_document_contract_is_sanitized(payload):
 
 def test_encoded_collection_id():
     def handler(request):
+        if request.url.path.endswith("/schema"):
+            assert (
+                request.url.raw_path
+                == b"/api/v1/collections/a%2Fb%20%26%3F%23%25/schema?format=schema"
+            )
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         assert request.url.raw_path == b"/api/v1/collections/a%2Fb%20%26%3F%23%25/items?maxDepth=0"
         return httpx.Response(200, json={"items": []})
 

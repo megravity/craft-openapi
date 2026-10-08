@@ -29,6 +29,9 @@ def test_deletion_exact_contract_and_context(adapter, kind):
         calls.append(request)
         assert request.url.path.startswith(f"/links/{adapter}-fixture/api/v1/")
         assert request.headers["accept"] == "application/json"
+        if request.url.path.endswith("/schema"):
+            assert dict(request.url.params) == {"format": "schema"}
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         if request.method == "GET":
             if kind == "collection":
                 assert dict(request.url.params) == {"maxDepth": "0"}
@@ -62,7 +65,9 @@ def test_deletion_exact_contract_and_context(adapter, kind):
         response = client.delete(f"/v1/{adapter}" + path, params=params, headers=AUTH)
         assert response.status_code == 200, response.text
         assert response.json() == {"id": "target"}
-    assert [r.method for r in calls] == ["GET", "DELETE"]
+    assert [r.method for r in calls] == (
+        ["GET", "GET", "DELETE"] if kind == "collection" else ["GET", "DELETE"]
+    )
 
 
 @pytest.mark.parametrize("adapter", ["space", "documents", "daily"])
@@ -74,6 +79,8 @@ def test_deleted_results_are_not_fabricated_or_retried(adapter, items):
 
     def handler(request):
         calls.append(request)
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         return httpx.Response(
             200, json={"items": [{"id": "target"}] if request.method == "GET" else items}
         )
@@ -82,7 +89,7 @@ def test_deleted_results_are_not_fabricated_or_retried(adapter, items):
         response = client.delete(f"/v1/{adapter}/collections/c/items/target", headers=AUTH)
         assert response.status_code == 502
         assert response.json()["error"]["outcomeUnknown"] is True
-    assert [r.method for r in calls] == ["GET", "DELETE"]
+    assert [r.method for r in calls] == ["GET", "GET", "DELETE"]
 
 
 @pytest.mark.parametrize("adapter", ["space", "documents", "daily"])
@@ -175,7 +182,7 @@ def test_invalid_space_task_filters_make_no_upstream_call(params):
         assert client.get("/v1/space/tasks", params=params, headers=AUTH).status_code == 422
 
 
-def test_title_editing_is_not_advertised_before_implementation():
+def test_title_editing_is_registered_after_verification():
     from pathlib import Path
 
     evidence = json.loads(
@@ -187,7 +194,7 @@ def test_title_editing_is_not_advertised_before_implementation():
             app_for(adapter, lambda request: pytest.fail("Title editing must not contact Craft"))
         ) as client:
             schema = client.get("/openapi.json").json()
-            assert not any(
+            assert any(
                 "update_collection_item_title" in op["operationId"]
                 for path in schema["paths"].values()
                 for op in path.values()
@@ -195,8 +202,8 @@ def test_title_editing_is_not_advertised_before_implementation():
             assert (
                 client.patch(
                     f"/v1/{adapter}/collections/c/items/row/title",
-                    json={"title": "New"},
+                    json={"title": ""},
                     headers=AUTH,
                 ).status_code
-                == 404
+                == 422
             )

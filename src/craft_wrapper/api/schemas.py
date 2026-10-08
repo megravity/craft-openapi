@@ -219,6 +219,10 @@ class UpdateCollectionProperties(InputModel):
     )
 
 
+class UpdateCollectionTitle(InputModel):
+    title: NonemptyText
+
+
 class MarkdownContent(BaseModel):
     blockId: str
     markdown: str

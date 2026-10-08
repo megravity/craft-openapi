@@ -35,6 +35,7 @@ SPACE_OPERATION_IDS = frozenset(
         "craft_space_list_collection_items",
         "craft_space_add_collection_item",
         "craft_space_update_collection_item_properties",
+        "craft_space_update_collection_item_title",
     }
 )
 
@@ -67,6 +68,7 @@ DOCUMENTS_OPERATION_IDS = frozenset(
         "craft_documents_delete_block",
         "craft_documents_delete_collection_item",
         "craft_documents_update_collection_item_properties",
+        "craft_documents_update_collection_item_title",
     }
 )
 DOCUMENTS_READ_OPERATION_IDS = frozenset(
@@ -100,6 +102,7 @@ DAILY_OPERATION_IDS = DAILY_READ_OPERATION_IDS | frozenset(
         "craft_daily_update_block_markdown",
         "craft_daily_add_collection_item",
         "craft_daily_update_collection_item_properties",
+        "craft_daily_update_collection_item_title",
         "craft_daily_add_task",
         "craft_daily_update_task",
         "craft_daily_delete_task",
@@ -319,6 +322,7 @@ class Settings(BaseSettings):
                         for suffix in (
                             "add_collection_item",
                             "update_collection_item_properties",
+                            "update_collection_item_title",
                             "delete_collection_item",
                         )
                     )

@@ -4,7 +4,7 @@ Use an existing Craft collection for undated planning items and native tasks for
 
 ## Prepare the collection
 
-Create the backlog manually in Craft. For the current wrapper, start with the default built-in **Title** column: collection creation still sends a hardcoded top-level title and reads do not normalize named headlines. HTTP title-update probes now pass for default/named columns when using the actual schema key, but schema-aware mapping and public title-editing routes are not implemented yet. Do not assume named-column compatibility from the MCP's dynamic property handling.
+Create the backlog manually in Craft. The built-in Title column and explicitly named title columns use the same public title field. Fresh schema reads select Craft's actual top-level headline key for creation, reads, and updates. Rename existing rows through update_collection_item_title with a nonempty title; properties-only updates remain separate and preserve the headline. Direct HTTP probes passed default/named title updates with exact restoration; installed-tool verification of the new mapping is pending.
 
 Add text columns for **Source task ID** and, optionally, **Scheduled task ID**. Status and priority columns can use existing select options. Keep original task text in a text property if needed. Inspect `get_collection_schema` and use actual property keys, not assumed display names. Collection writes accept strings; the upstream validates legal values. Relations, complex writes, schema changes, and automatic collection creation remain outside this workflow.
 
@@ -27,7 +27,7 @@ Keep the collection row as the planning record. When scheduled work should appea
 
 After completing/canceling the native task, explicitly update the row's status. Treat those as separate calls, verify their results, and report partial completion instead of claiming synchronization. Task dates are not timed reminders.
 
-The unreleased Space adapter can create, reschedule, edit, complete/cancel, and delete native tasks within approved planning documents. Creation includes documentId in the body; updates/deletion require owning documentId query context and fresh structural/native-task membership checks. Only leaf tasks can be deleted. Keep inbox/daily-note writes on the Daily tool. Installed-tool checks passed creation, rescheduling, completion in place, canceled/approved deletion, and unapproved-root denial; see [verification observations](PROFILES.md#verification-observations--2026-10-07). Movement, date clearing, collection-title editing, and nested row-note editing remain unsupported. Do not retire MCP for workflows the pilot has not covered.
+The unreleased Space adapter can create, reschedule, edit, complete/cancel, and delete native tasks within approved planning documents. Creation includes documentId in the body; updates/deletion require owning documentId query context and fresh structural/native-task membership checks. Only leaf tasks can be deleted. Keep inbox/daily-note writes on the Daily tool. Installed-tool checks passed creation, rescheduling, completion in place, canceled/approved deletion, and unapproved-root denial; see [verification observations](PROFILES.md#verification-observations--2026-10-07). Movement, date clearing, and nested row-note editing remain unsupported. Do not retire MCP for workflows the pilot has not covered.
 
 ## Acceptance before retiring MCP
 

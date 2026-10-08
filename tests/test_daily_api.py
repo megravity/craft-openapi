@@ -371,6 +371,10 @@ def test_daily_operation_contracts(
 
     def handler(request):
         calls.append(request)
+        if upstream_path.endswith("/items") and request.url.path.endswith("/schema"):
+            assert request.method == "GET"
+            assert dict(request.url.params) == {"format": "schema"}
+            return httpx.Response(200, json=daily_fixtures["schema"])
         assert request.method == upstream_method
         assert request.url.path == "/links/daily-test-secret/api/v1/" + upstream_path
         assert dict(request.url.params) == upstream_query
@@ -414,7 +418,7 @@ def test_daily_operation_contracts(
     else:
         expected = response
     assert result.json() == expected
-    assert len(calls) == 1
+    assert len(calls) == (2 if upstream_path.endswith("/items") else 1)
 
 
 @pytest.mark.parametrize(
@@ -684,6 +688,8 @@ def test_uncertain_singleton_results(daily_settings, method, path, body, items):
 
     def handler(request):
         calls.append(request)
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         return httpx.Response(200, json={"items": items})
 
     with TestClient(
@@ -692,7 +698,7 @@ def test_uncertain_singleton_results(daily_settings, method, path, body, items):
         response = client.request(method, "/v1/daily" + path, json=body, headers=AUTH)
     assert response.status_code == 502
     assert response.json()["error"]["outcomeUnknown"] is True
-    assert len(calls) == 1
+    assert len(calls) == (2 if path.startswith("/collections") else 1)
 
 
 @pytest.mark.parametrize(

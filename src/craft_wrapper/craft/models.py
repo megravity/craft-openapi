@@ -35,7 +35,11 @@ class Block(CraftModel):
 class CollectionItem(CraftModel):
     id: str
     type: str | None = None
-    title: str | None = Field(default=None, description="May be omitted for untitled rows.")
+    title: str | None = Field(
+        default=None,
+        description="Row headline; collection-item endpoints normalize the schema key. "
+        "May be omitted for untitled rows or partial mutation responses.",
+    )
     markdown: str | None = None
     properties: dict[str, Any] | None = Field(
         default=None,

@@ -132,27 +132,55 @@ class SpaceClient:
         return await operations.get_collection_schema(self.transport, collection_id)
 
     async def list_collection_items(
-        self, collection_id: str, max_depth: int = 0
+        self,
+        collection_id: str,
+        max_depth: int = 0,
+        *,
+        schema: CollectionSchema | None = None,
     ) -> Items[CollectionItem]:
-        return await operations.list_collection_items(self.transport, collection_id, max_depth)
+        return await operations.list_collection_items(
+            self.transport, collection_id, max_depth, schema=schema
+        )
 
     async def add_collection_item(
-        self, collection_id: str, title: str, properties: dict[str, str]
+        self,
+        collection_id: str,
+        title: str,
+        properties: dict[str, str],
+        *,
+        schema: CollectionSchema | None = None,
     ) -> CollectionItem:
         return await operations.add_collection_item(
-            self.transport, collection_id, title, properties
+            self.transport, collection_id, title, properties, schema=schema
         )
 
     async def update_collection_item_properties(
-        self, collection_id: str, item_id: str, properties: dict[str, str]
+        self,
+        collection_id: str,
+        item_id: str,
+        properties: dict[str, str],
+        *,
+        schema: CollectionSchema | None = None,
     ) -> CollectionItem:
         return await operations.update_collection_item_properties(
-            self.transport, collection_id, item_id, properties
+            self.transport, collection_id, item_id, properties, schema=schema
         )
 
     @staticmethod
     def _single[M: BaseModel](result: Items[M]) -> M:
         return operations.single(result)
+
+    async def update_collection_item_title(
+        self,
+        collection_id: str,
+        item_id: str,
+        title: str,
+        *,
+        schema: CollectionSchema | None = None,
+    ) -> CollectionItem:
+        return await operations.update_collection_item_title(
+            self.transport, collection_id, item_id, title, schema=schema
+        )
 
     async def delete_block(self, block_id: str) -> DeletedResource:
         return await operations.delete_block(self.transport, block_id)

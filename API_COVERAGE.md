@@ -25,12 +25,12 @@ Count upstream **method/path pairs separately per adapter**. Multiple wrapper ro
 
 | Adapter | Documented pairs | I | P | D | Represented pairs (I + P) | Public wrapper operations |
 |---|---:|---:|---:|---:|---:|---:|
-| Space | 44 | 2 | 16 | 26 | 18 | 19 |
-| Multi-Document | 33 | 1 | 11 | 21 | 12 | 13 |
-| Daily Notes | 36 | 2 | 13 | 21 | 15 | 19 |
-| **Total** | **113** | **5** | **40** | **68** | **45** | **51** |
+| Space | 44 | 2 | 16 | 26 | 18 | 20 |
+| Multi-Document | 33 | 1 | 11 | 21 | 12 | 14 |
+| Daily Notes | 36 | 2 | 13 | 21 | 15 | 20 |
+| **Total** | **113** | **5** | **40** | **68** | **45** | **54** |
 
-The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown read splits and Daily Notes date/ID route splits account for the difference between 45 represented upstream pairs and 51 public operations.
+The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown and Daily Notes date/ID read splits, plus separate property/title update routes, account for the difference between 45 represented upstream pairs and 54 public operations.
 
 ## Upstream endpoint grid
 
@@ -111,6 +111,7 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 | `craft_space_list_collection_items` | `GET /v1/space/collections/{collectionId}/items` | `GET /collections/{collectionId}/items` | [C1](#c1) | `Items[CollectionItem]` |
 | `craft_space_add_collection_item` | `POST /v1/space/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_space_update_collection_item_properties` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
+| `craft_space_update_collection_item_title` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
 | `craft_space_delete_collection_item` | `DELETE /v1/space/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
 | `craft_space_delete_block` | `DELETE /v1/space/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
@@ -132,6 +133,7 @@ Sources: [routes](src/craft_wrapper/api/documents.py), [client](src/craft_wrappe
 | `craft_documents_list_collection_items` | `GET /v1/documents/collections/{collectionId}/items` | `GET /collections/{collectionId}/items` | [C1](#c1) | `Items[CollectionItem]` |
 | `craft_documents_add_collection_item` | `POST /v1/documents/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_documents_update_collection_item_properties` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
+| `craft_documents_update_collection_item_title` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
 | `craft_documents_delete_collection_item` | `DELETE /v1/documents/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
 | `craft_documents_delete_block` | `DELETE /v1/documents/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
@@ -155,6 +157,7 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 | `craft_daily_list_collection_items` | `GET /v1/daily/collections/{collectionId}/items` | `GET /collections/{collectionId}/items` | [C1](#c1) | `Items[CollectionItem]` |
 | `craft_daily_add_collection_item` | `POST /v1/daily/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_daily_update_collection_item_properties` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
+| `craft_daily_update_collection_item_title` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
 | `craft_daily_list_tasks` | `GET /v1/daily/tasks` | `GET /tasks` | [T1](#t1) | `Items[Task]` |
 | `craft_daily_add_task` | `POST /v1/daily/tasks` | `POST /tasks` | [T2](#t2) | `Task` |
 | `craft_daily_update_task` | `PATCH /v1/daily/tasks/{taskId}` | `PUT /tasks` | [T3](#t3) | `Task` |
@@ -189,11 +192,11 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 
 ### C1
 
-**Collection-item reads — P in all adapters.** `Identifier` plus `ItemDepth` forwards `maxDepth` (default 0; `-1` supported), returning `Items[CollectionItem]`. Dynamic JSON properties include scalar, array, and object values; nested content/previews are modeled. There is no documented cursor or view-execution parameter. The shallower default and modeled response projection are intentional adaptations. The title probe also observed a named headline returned under `task` instead of `title`; the shared item model does not expose that dynamic headline key. This known projection gap requires separately verified normalization; do not claim full named-column response parity.
+**Collection-item reads — P in all adapters.** `Identifier` plus `ItemDepth` forwards `maxDepth` (default 0; `-1` supported), returning `Items[CollectionItem]`. Dynamic JSON properties include scalar, array, and object values; nested content/previews are modeled. There is no documented cursor or view-execution parameter. The shallower default and modeled response projection are intentional adaptations. Fresh native-schema reads identify the headline key; named values are normalized to public title before parsing. Unknown extra fields remain omitted; regular properties and nested content retain their shapes. Missing default-title metadata uses title; unsafe envelope-conflicting keys and ambiguous headlines are rejected. Schema and row reads share one deadline and consume separate upstream requests.
 
 ### C2
 
-**Collection-item creation — P in all adapters.** `AddCollectionItem` accepts one nonempty title and optional string-valued `properties`. It maps to `{items:[{title,properties}]}` and unwraps `CollectionItem`.
+**Collection-item creation — P in all adapters.** `AddCollectionItem` accepts one nonempty title and optional string-valued `properties`. It resolves the current schema key and maps to `{items:[{<headlineKey>:title,properties}]}`, normalizing the returned headline before unwrapping CollectionItem.
 
 **Gaps/boundaries:** documented array input is restricted to one item. Relations, complex values, and null clearing are unsupported; legal property values are validated by Craft. Dynamic read values do not establish complex-write contracts. Verify additional write shapes before exposing them.
 
@@ -201,7 +204,11 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 
 **Collection-item updates — P in all adapters.** `Identifier` for collection/item plus nonempty `UpdateCollectionProperties` maps PATCH to `PUT .../items` with `{itemsToUpdate:[{id,properties}]}`. Omitted properties are preserved; response is one possibly sparse `CollectionItem`.
 
-**Gaps/boundaries:** no batch updates; string-valued property changes only. Profile property writes verify schema field types and deny relations/block links/unknown complex types before submission. A follow-up live scratch probe verified `itemsToUpdate:[{id,<schemaHeadlineKey>:title}]` for both default and explicitly named title columns, preserving properties/content and restoring both rows exactly. Craft's per-collection json-schema-items representation identifies the headline as a top-level field, not a regular property. The earlier hardcoded title field was invalid for the named column. No title-edit endpoint or schema-aware normalization is exposed yet. Other title updates, relations, and clearing are not inferred from examples; verify upstream support before adding them.
+**Gaps/boundaries:** no batch updates; string-valued property changes only. Profile property writes verify schema field types and deny relations/block links/unknown complex types before submission. A follow-up live scratch probe verified `itemsToUpdate:[{id,<schemaHeadlineKey>:title}]` for both default and explicitly named title columns, preserving properties/content and restoring both rows exactly. Craft's per-collection json-schema-items representation identifies the headline as a top-level field, not a regular property. The earlier hardcoded title field was invalid for the named column. C8 exposes the verified title mapping separately; property-only updates are unchanged and mutation responses normalize the headline through the same schema. Other title updates, relations, and clearing are not inferred from examples; verify upstream support before adding them.
+
+### C8
+
+**Collection-item title updates — P in all adapters.** Strict UpdateCollectionTitle accepts only a nonempty title string. Fresh schema/membership reads verify the target (including legacy mode); planner requires an approved collection, while read-only/migration cannot rename. Maps to singleton `itemsToUpdate:[{id,<headlineKey>:title}]`, preserving other properties/content. Normalizes the response to CollectionItem.title and validates the echoed ID. Partial responses remain partial; empty/multiple/mismatched/ambiguous results are uncertain failures after submission. No schema replacement, title clearing, batch updates, retries, or rollback. Native-key payloads passed direct Space HTTP probes for both tested shapes; the new wrapper/tool flow is covered by mocks and still needs installed-tool verification.
 
 ### C4
 
@@ -323,6 +330,7 @@ These links identify automated regression coverage already present in the reposi
 | All Multi-Document mappings, including L2/C5/S1 | [test_documents_api.py](tests/test_documents_api.py): `test_operation_contracts`, invalid filters, string boundary, connection isolation; [test_documents_client.py](tests/test_documents_client.py): include/exclude/default forwarding, deletion status, metadata, opaque IDs. |
 | All Daily Notes mappings, including C6/S2/T1–T4 | [test_daily_api.py](tests/test_daily_api.py): `test_daily_operation_contracts`, invalid queries/writes, task scopes, uncertain singleton results, client isolation; [test_daily_client.py](tests/test_daily_client.py): ID encoding and selector separation. |
 | B1/C1/C4 modeled responses and S1 result preservation | [test_space_api.py](tests/test_space_api.py): nested rows/previews, dynamic values/date strings; [test_space_client.py](tests/test_space_client.py): option objects, sparse schemas, malformed rows, known-field projection, extra/repeated search results. Names containing `live` still use mocks. |
+| Headline mappings C1–C3/C8 | [test_collection_headlines.py](tests/test_collection_headlines.py): default/named/optional metadata, exact schema/payload mappings, nested preservation, role/target isolation, reserved keys, uncertain results, deadlines, expiry, and standalone-tool workflows across adapters. |
 | Space task writes T6–T8 | [test_space_tasks.py](tests/test_space_tasks.py): exact payloads/headers, independent connection, role/target/native membership checks, partial/singleton outcomes, deadlines, expiry, and the profile tool confirmation workflow. |
 | Public tool mappings/workflows | [test_openwebui_tool.py](tests/test_openwebui_tool.py): exact current function sets, all mappings, Daily Notes date/task workflow, validation forwarding and permissions. |
 | Configuration/OpenAPI | [test_openapi.py](tests/test_openapi.py), [test_documents_api.py](tests/test_documents_api.py), [test_daily_api.py](tests/test_daily_api.py): configured-adapter route sets, presets, 404s for disabled routes, all seven connection combinations, bearer auth, valid OpenAPI, secret redaction. |

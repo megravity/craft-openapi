@@ -218,10 +218,10 @@ def test_planner_allowed_writes_and_exact_preflights(method, path, query, body, 
         assert response.status_code == status, response.text
     assert len([r for r in calls if r.method != "GET"]) == 1
     assert len(calls) == (
-        1
+        2
         if method == "POST" and "collections" in path
         else 3
-        if method == "PATCH" and "collections" in path
+        if method in {"PATCH", "DELETE"} and "collections" in path
         else 2
     )
 

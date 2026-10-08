@@ -231,6 +231,8 @@ def test_unknown_fields_and_string_writes_reach_real_wrapper(
 
     def upstream(request):
         upstream_calls.append(request)
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         assert json.loads(request.content) == {
             "itemsToUpdate": [{"id": "row", "properties": {"due": "2026-10-02"}}]
         }
@@ -266,7 +268,7 @@ def test_unknown_fields_and_string_writes_reach_real_wrapper(
             assert valid["response"]["properties"] == {"due": "2026-10-02"}
 
     asyncio.run(run())
-    assert len(upstream_calls) == 1
+    assert len(upstream_calls) == 2
 
 
 def test_read_only_wrapper_still_controls_writes(tool_module, tool, monkeypatch, settings):
@@ -444,7 +446,7 @@ def test_private_request_logging_suppressed_and_filter_removed(
 def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == {"space": 20, "documents": 14, "daily": 20}[adapter(tool)]
+    assert len(public) == {"space": 21, "documents": 15, "daily": 21}[adapter(tool)]
     assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
     method = operation(tool, "list_documents")
     hints = get_type_hints(method)
@@ -582,7 +584,7 @@ def test_mocked_document_and_collection_workflows(tool_module, tool, settings, m
             assert updated_row["response"]["properties"] == {"status": "Done"}
 
     asyncio.run(run())
-    assert len(calls) == 8
+    assert len(calls) == 10
 
 
 @pytest.mark.parametrize("tool_module", ["daily"], indirect=True)

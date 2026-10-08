@@ -97,6 +97,7 @@ def add_capabilities(app: FastAPI, profile_id: str) -> None:
                     for suffix in (
                         "add_collection_item",
                         "update_collection_item_properties",
+                        "update_collection_item_title",
                         "delete_collection_item",
                     )
                 )

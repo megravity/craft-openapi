@@ -633,7 +633,8 @@ class Tools:
     ) -> dict[str, Any]:
         """
         Read collection rows with structured properties, including links and relations.
-        Titles can be omitted; properties can be empty. No view execution or pagination.
+        Headlines are normalized to title using the current schema. Untitled rows can omit title;
+        properties can be empty. No view execution or pagination.
         :param collectionId: Collection ID from discovery.
         :param parameters: Optional JSON query object with maxDepth (default 0; -1 all descendants).
         """
@@ -676,6 +677,23 @@ class Tools:
             f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}",
             body=body,
             operation_id="craft_daily_update_collection_item_properties",
+        )
+
+    async def craft_daily_update_collection_item_title(
+        self, collectionId: str, itemId: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rename one existing row while preserving its properties and nested content.
+
+        :param collectionId: Approved collection ID from discovery.
+        :param itemId: Exact row ID from list_collection_items.
+        :param body: JSON object containing only a nonempty title string. The wrapper maps
+            its schema key; do not put the headline inside properties or replace the schema.
+        """
+        return await self._request(
+            "PATCH",
+            f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}/title",
+            body=body,
+            operation_id="craft_daily_update_collection_item_title",
         )
 
     async def craft_daily_get_capabilities(self) -> dict[str, Any]:

@@ -46,7 +46,7 @@ def test_live_schema_shape_and_select_value_cardinality(settings):
         response = client.get(path + "/items", headers=AUTH)
         assert response.status_code == 200
         assert response.json() == items
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 @pytest.mark.parametrize(
@@ -282,6 +282,10 @@ def test_all_endpoint_contracts(
     def handler(request):
         calls.append(request)
         expected_method, expected_path = operation.split(" ")
+        if expected_path.endswith("/items") and request.url.path.endswith("/schema"):
+            assert request.method == "GET"
+            assert dict(request.url.params) == {"format": "schema"}
+            return httpx.Response(200, json=fixtures["GET /collections/{collectionId}/schema"])
         assert request.method == expected_method
         assert request.url.path == "/links/testing-link-secret/api/v1" + expected_path.replace(
             "{collectionId}", "col1"
@@ -309,7 +313,7 @@ def test_all_endpoint_contracts(
     ) as client:
         response = client.request(method, PREFIX + path, json=body, headers=AUTH)
     assert response.status_code == status, response.text
-    assert len(calls) == 1
+    assert len(calls) == (2 if operation.endswith("/items") else 1)
     payload = response.json()
     if "/markdown" in path:
         assert payload == {"blockId": "0", "markdown": "# Root\nContent"}
@@ -415,6 +419,8 @@ def test_collection_date_strings_preserved_in_item_and_block_reads(settings, pat
     )
 
     def handler(request):
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         assert request.method == "GET"
         return httpx.Response(200, json=payload)
 
@@ -433,6 +439,9 @@ def test_collection_date_update_and_restore_round_trip(settings):
 
     def handler(request):
         calls.append(request.method)
+        if request.url.path.endswith("/schema"):
+            assert dict(request.url.params) == {"format": "schema"}
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         assert request.url.path.endswith("/collections/example/items")
         if request.method == "PUT":
             target_date = next(expected_dates)
@@ -461,11 +470,13 @@ def test_collection_date_update_and_restore_round_trip(settings):
             response = client.get(path, headers=AUTH)
             assert response.status_code == 200
             assert response.json() == {"items": [expected]}
-    assert calls == ["PUT", "GET", "PUT", "GET"]
+    assert calls == ["GET", "PUT", "GET", "GET", "GET", "PUT", "GET", "GET"]
 
 
 def test_dynamic_collection_values_and_sparse_update(settings):
     def handler(request):
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Example", "properties": []})
         if request.method == "GET":
             return httpx.Response(
                 200,
@@ -564,11 +575,13 @@ def test_collection_workflow(settings, fixtures):
 
     def handler(request):
         steps.append(request)
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json=fixtures["GET /collections/{collectionId}/schema"])
         if len(steps) == 1:
             return httpx.Response(200, json=fixtures["GET /collections"])
         if len(steps) == 2:
             return httpx.Response(200, json=fixtures["GET /collections/{collectionId}/schema"])
-        if len(steps) == 3:
+        if request.method == "POST":
             assert json.loads(request.content) == {
                 "items": [{"title": "Task", "properties": {"status": "Not Started"}}]
             }
@@ -596,7 +609,7 @@ def test_collection_workflow(settings, fixtures):
             json={"properties": {prop["key"]: prop["options"][-1]}},
         )
         assert updated.json() == {"id": "new"}
-    assert len(steps) == 4
+    assert len(steps) == 6
 
 
 def test_rate_error_envelope_and_safe_logs(settings, caplog):

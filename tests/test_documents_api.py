@@ -311,6 +311,10 @@ def test_operation_contracts(
 
     def handler(request):
         calls.append(request)
+        if upstream_path.endswith("/items") and request.url.path.endswith("/schema"):
+            assert request.method == "GET"
+            assert dict(request.url.params) == {"format": "schema"}
+            return httpx.Response(200, json=SCHEMA)
         assert request.url.path == "/links/documents-test-secret/api/v1/" + upstream_path
         assert request.method == upstream_method
         assert dict(request.url.params) == upstream_query
@@ -332,7 +336,7 @@ def test_operation_contracts(
         response = client.request(method, PREFIX + path, params=query, json=body, headers=AUTH)
     assert response.status_code == (201 if method == "POST" else 200)
     assert response.json() == expected
-    assert len(calls) == 1
+    assert len(calls) == (2 if upstream_path.endswith("/items") else 1)
 
 
 @pytest.mark.parametrize(
@@ -471,6 +475,8 @@ def test_uncertain_singleton_write_results(documents_settings, payload, method, 
 
     def handler(request):
         calls.append(request)
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json=SCHEMA)
         return httpx.Response(200, json=payload)
 
     with TestClient(
@@ -479,7 +485,7 @@ def test_uncertain_singleton_write_results(documents_settings, payload, method, 
         response = client.request(method, PREFIX + path, json=body, headers=AUTH)
     assert response.status_code == 502
     assert response.json()["error"]["outcomeUnknown"] is True
-    assert len(calls) == 1
+    assert len(calls) == (2 if path.startswith("/collections") else 1)
 
 
 @pytest.mark.parametrize(

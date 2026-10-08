@@ -465,6 +465,8 @@ def test_server_rechecks_access_after_live_confirmation(tool_context, monkeypatc
     def upstream(request):
         upstream_calls.append(request)
         assert request.method == "GET"
+        if request.url.path.endswith("/schema"):
+            return httpx.Response(200, json={"name": "Backlog", "properties": []})
         return httpx.Response(200, json={"items": [{"id": "row", "title": "Example"}]})
 
     settings = Settings(
@@ -508,4 +510,4 @@ def test_server_rechecks_access_after_live_confirmation(tool_context, monkeypatc
             )
 
     asyncio.run(run())
-    assert len(upstream_calls) == 1
+    assert len(upstream_calls) == 2

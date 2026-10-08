@@ -19,6 +19,7 @@ from craft_wrapper.api.schemas import (
     ItemDepth,
     MarkdownContent,
     UpdateCollectionProperties,
+    UpdateCollectionTitle,
     UpdateMarkdown,
 )
 from craft_wrapper.craft.documents.client import DocumentsClient
@@ -200,7 +201,8 @@ def make_router() -> APIRouter:
         summary="Read collection items",
         description="Read all items in an existing collection. Default maxDepth=0 reads "
         "properties without nested content; -1 reads all descendants. Values "
-        "can have collection-specific JSON shapes. No pagination or execution "
+        "can have collection-specific JSON shapes. A fresh schema read normalizes the headline "
+        "to title; unknown extra fields are omitted. No pagination or execution "
         "of stored view filters/sorts/groups is documented.",
     )
     async def list_items(
@@ -223,8 +225,34 @@ def make_router() -> APIRouter:
     async def add_item(
         collectionId: Identifier, body: AddCollectionItem, client: Client, request: Request
     ):
-        await authorize_write(request)
-        return await client.add_collection_item(collectionId, body.title, body.properties)
+        schema = await authorize_write(request)
+        return await client.add_collection_item(
+            collectionId, body.title, body.properties, schema=schema
+        )
+
+    @router.patch(
+        "/collections/{collectionId}/items/{itemId}/title",
+        operation_id="craft_documents_update_collection_item_title",
+        response_model=CollectionItem,
+        response_model_exclude_none=True,
+        summary="Rename one existing collection row",
+        description="Set a nonempty title on one existing row. Craft's current schema selects "
+        "the native headline key; the public response uses title. Other properties/nested "
+        "content are preserved. Planner requires an approved collection and fresh item membership; "
+        "read-only/migration cannot rename. No schema replacement, clearing, retries or rollback. "
+        "Responses can be partial; verify uncertain outcomes before repeating.",
+    )
+    async def update_item_title(
+        collectionId: Identifier,
+        itemId: Identifier,
+        body: UpdateCollectionTitle,
+        client: Client,
+        request: Request,
+    ):
+        schema = await authorize_write(request)
+        return await client.update_collection_item_title(
+            collectionId, itemId, body.title, schema=schema
+        )
 
     @router.patch(
         "/collections/{collectionId}/items/{itemId}",
@@ -245,8 +273,10 @@ def make_router() -> APIRouter:
         client: Client,
         request: Request,
     ):
-        await authorize_write(request)
-        return await client.update_collection_item_properties(collectionId, itemId, body.properties)
+        schema = await authorize_write(request)
+        return await client.update_collection_item_properties(
+            collectionId, itemId, body.properties, schema=schema
+        )
 
     @router.delete(
         "/collections/{collectionId}/items/{itemId}",
