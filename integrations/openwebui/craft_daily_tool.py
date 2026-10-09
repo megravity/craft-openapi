@@ -334,7 +334,29 @@ class Tools:
                 )
             parts = path.split("/")
             try:
-                if parts[3] == "collections" and parts[5] == "items":
+                if (
+                    len(parts) == 9
+                    and parts[3] == "collections"
+                    and parts[5] == "items"
+                    and parts[7] == "blocks"
+                ):
+                    collection_id, item_id, resource_id = (unquote(parts[i]) for i in (4, 6, 8))
+                    preview = await self._http_request(
+                        "GET", f"/v1/{parts[2]}/blocks/{parts[8]}", {"maxDepth": 0}, valves=valves
+                    )
+                    resource = preview["response"]
+                    if resource.get("id") != resource_id or resource.get("type") != "text":
+                        raise ValueError("Unreadable body text block")
+                    label = resource.get("markdown") or "Empty text block"
+                    consequence = (
+                        "This deletes only the selected leaf body text block. "
+                        "The entry title/properties are preserved."
+                    )
+                    target = (
+                        f"Collection ID: {collection_id}\nItem ID: {item_id}\n"
+                        f"Block ID: {resource_id}"
+                    )
+                elif parts[3] == "collections" and parts[5] == "items":
                     collection_id, resource_id = unquote(parts[4]), unquote(parts[6])
                     preview = await self._http_request(
                         "GET", "/".join(parts[:6]), {"maxDepth": 0}, valves=valves
@@ -694,6 +716,62 @@ class Tools:
             f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}/title",
             body=body,
             operation_id="craft_daily_update_collection_item_title",
+        )
+
+    async def craft_daily_insert_collection_item_markdown(
+        self, collectionId: str, itemId: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add Markdown context inside an existing entry, preserving its title and properties.
+
+        :param collectionId: Approved collection ID from discovery.
+        :param itemId: Entry ID from list_collection_items; used as the body page ID.
+        :param body: Nonempty markdown; optional position start/end (default end).
+            Read back with read_markdown using itemId as blockId and maxDepth=-1.
+        """
+        return await self._request(
+            "POST",
+            f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}/content",
+            body=body,
+            operation_id="craft_daily_insert_collection_item_markdown",
+        )
+
+    async def craft_daily_update_collection_item_block_markdown(
+        self, collectionId: str, itemId: str, blockId: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Edit one verified body text block; the entry root and nested collections are protected.
+
+        :param collectionId: Approved collection ID.
+        :param itemId: Owning entry ID.
+        :param blockId: Text-block ID from get_block(itemId,maxDepth=-1).
+        :param body: JSON object containing only markdown; other body blocks are preserved.
+        """
+        return await self._request(
+            "PATCH",
+            f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}/blocks/{self._id(blockId)}",
+            body=body,
+            operation_id="craft_daily_update_collection_item_block_markdown",
+        )
+
+    async def craft_daily_delete_collection_item_block(
+        self,
+        collectionId: str,
+        itemId: str,
+        blockId: str,
+        __event_call__=None,
+        __event_emitter__=None,
+    ) -> dict[str, Any]:
+        """Delete one verified leaf body text block after a live confirmation dialog.
+
+        :param collectionId: Approved collection ID.
+        :param itemId: Owning entry ID; never deletes this root or its properties/title.
+        :param blockId: Exact leaf text-block ID from the entry's structured read.
+        """
+        return await self._request(
+            "DELETE",
+            f"/v1/daily/collections/{self._id(collectionId)}/items/{self._id(itemId)}/blocks/{self._id(blockId)}",
+            event_call=__event_call__,
+            event_emitter=__event_emitter__,
+            operation_id="craft_daily_delete_collection_item_block",
         )
 
     async def craft_daily_get_capabilities(self) -> dict[str, Any]:

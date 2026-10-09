@@ -83,6 +83,8 @@ Collection writes require an approved `collectionId`. When properties are suppli
 
 Collection creation and item responses resolve the current headline key from the native schema and expose a fixed public title. Row-title updates accept only `{title}` and preserve regular properties/nested content. Planner requires an approved collection and fresh row membership; the new rename routes verify membership in legacy mode too. Schema data is shared only within the current request, never cached across requests. Unsupported envelope-conflicting headline keys or ambiguous membership/returned headlines fail closed. Responses can be partial; missing titles are not fabricated.
 
+Collection-entry bodies use dedicated collectionId/itemId paths for Markdown insertion, one text-block edit, and confirmed leaf-block deletion. Every mode verifies fresh collection membership and reads the item root at maxDepth=-1, accepting only its echoed ID and collectionItem type. Planner requires the collection in writeTargets; read-only/migration cannot edit bodies. The item root is never an edit/delete target. Nested collection/item subtrees, links/properties, media, descendants on deletion, and any incomplete preview are excluded. Generic document routes continue to exclude collection entries. The server rechecks expiry after verification; mutation outcomes remain uncertain if responses are lost.
+
 Space/Multi-Document insertion and block updates in profile mode require owning `documentId` in the query. The wrapper reads that approved root with `maxDepth=-1`, checks the returned root ID and structure, and locates the target only through actual content. IDs embedded in Markdown, links, or properties are not authority. Collection subtrees/items are excluded from document-edit permissions.
 
 Space native-task creation requires `documentId` in the body; updates/deletion require it in the query in every mode. Planner enables these operations only with approved Space document roots. Read-only/migration cannot write tasks. Each existing task is checked in the full document structure (excluding collections/links) and fresh native `scope=document` discovery. Deletion allows only leaf text tasks; nested content is protected. Roots and verification lists must be valid/unambiguous, and expiry is rechecked before submission. Use Daily for inbox/daily-note targets; Space task movement and date clearing remain unsupported.
@@ -107,7 +109,9 @@ Deletion functions use the reserved `__event_emitter__` callback to display a fi
 
 See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin/development/events/). Mocked callback tests cover tool behavior; installed-tool checks cover the actual confirmation dialog and read-back workflow.
 
-## Verification observations — 2026-10-07
+## Verification observations
+
+Observations collected from 2026-10-07 through 2026-10-09.
 
 | Surface | Observation | Evidence |
 |---|---|---|
@@ -117,7 +121,9 @@ See [Open WebUI events](https://docs.openwebui.com/features/extensibility/plugin
 | Uncertain creation | One Daily creation returned `504 craft_timeout` with `outcomeUnknown:true`. Inspection found exactly one created task; the write was not repeated. Subsequent updates/deletion returned `200`. The latency cause remains unconfirmed. | Open WebUI request results and inbox/upcoming read-back checks. |
 | Collection headlines | Craft's per-collection `json-schema-items` representation exposed top-level `title` for the default column and `task` for the named column. Updates using each actual key changed the headline, preserved properties/nested content, and restored the returned row fields exactly. Hardcoded `title` was rejected for the named column. | Direct HTTP schema reads, updates, read-back checks, and restoration of two scratch rows. |
 
-These observations cover the tested scratch workflows. Live Multi-Document workflows and visual rendering of the **Nothing deleted** status remain unverified. Automated tests cover callback failures, target/credential isolation, and other adapter combinations separately. Schema-aware headline mapping/title routes are now implemented and mock-tested; live installed-tool checks of that increment remain pending; complete MCP replacement is not established.
+These observations cover the tested scratch workflows. Live Multi-Document workflows and visual rendering of the **Nothing deleted** status remain unverified. Automated tests cover callback failures, target/credential isolation, and other adapter combinations separately. Space Test create/rename/read-back and cleanup passed for both headline shapes. The newly added scoped body routes remain pending installed-tool verification; complete MCP replacement is not established.
+
+Direct Space HTTP body probes passed insertion, single-block Markdown update/read-back, and leaf-block deletion inside one disposable collection item. Removing that item restored the existing collection rows' returned state exactly. Mocked scoped-route/tool workflows cover all three adapters; no real backlog tasks have been copied.
 
 ## Delivery checkpoints
 
@@ -130,6 +136,7 @@ These observations cover the tested scratch workflows. Live Multi-Document workf
 | 4. Space task discovery | All six discovery scopes implemented; the follow-up adds approved-document creation/updates and verified leaf-task deletion. Inbox/daily-note Space targets, movement and clearing stay unavailable. |
 | 5. Collection-item deletion | Singleton deletion across three adapters, membership checks, and dialog integration implemented. |
 | 6. Leaf-block deletion | Scoped structural/type checks and dialog integration implemented across three adapters. |
+| 7a. Entry body editing | Collection-scoped insertion/text updates/confirmed leaf deletion implemented; existing item-ID reads expose Markdown and structure. No whole-body replacement. |
 | 7. Title editing | Implemented across adapters with current-schema mapping, fresh membership, and planner collection targets. Read-only/migration cannot rename. No schema/block-edit workaround. |
 | 8. Reviewed workflow | [Backlog workflow](BACKLOG_WORKFLOW.md), mocked acceptance scenarios, setup and coverage documentation. |
 

@@ -19,7 +19,7 @@ For project context and agent handoff, start with [PROJECT.md](PROJECT.md). Cont
 - [API coverage matrix](API_COVERAGE.md)
 - [Experimental profiles](PROFILES.md) and [reviewed backlog workflow](BACKLOG_WORKFLOW.md)
 - [Errors and write outcomes](#errors-and-write-outcomes)
-- [Open WebUI](#open-webui): [Python tool](#workspace-python-tool), [OpenAPI server](#openapi-tool-server)
+- [Open WebUI](#open-webui): [Python tool](#workspace-python-tool), [tool updates](#update-installed-python-tools), [OpenAPI server](#openapi-tool-server)
 - [Tests and checks](#tests-and-checks)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
@@ -215,7 +215,7 @@ Environment variables override `.env`. Startup rejects missing credentials, plac
 | `WRAPPER_API_TOKEN`             | Required in legacy mode; ignored when experimental profiles are enabled. Nonempty independent bearer token without whitespace.                                                                                                                       |
 | `CRAFT_TIMEOUT_SECONDS`         | `30`; overall upstream deadline and read/write/pool phase limits.                                                                                                                     |
 | `CRAFT_CONNECT_TIMEOUT_SECONDS` | `5`; upstream connection limit, also bounded by the overall deadline.                                                                                                                 |
-| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (20 Space, 14 Multi-Document, 20 Daily Notes; 54 combined in the working tree). `read_only`: their reads (9 Space, 7 Multi-Document, 9 Daily Notes; 25 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
+| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (23 Space, 17 Multi-Document, 23 Daily Notes; 63 combined in the working tree). `read_only`: their reads (9 Space, 7 Multi-Document, 9 Daily Notes; 25 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
 | `WRAPPER_PUBLIC_URL`            | Optional non-secret HTTP(S) origin, without a path/query/credentials; sets OpenAPI `servers`. Otherwise consumers use the schema origin.                                              |
 | `WRAPPER_PROFILES_JSON` | Optional experimental profile rules. Omitted preserves legacy mode; see [profile configuration](PROFILES.md). |
 | `WRAPPER_READ_ONLY_TOKEN`, `WRAPPER_PLANNER_TOKEN`, `WRAPPER_MIGRATION_TOKEN` | Separate credentials for enabled profiles; never place them in the rules JSON. |
@@ -242,7 +242,7 @@ Selection takes effect at startup. Recreate the Docker container after changing 
 
 Reads/updates return `200`; creates/insertion return `201`. All responses are JSON, including rendered Markdown.
 
-The unreleased working tree exposes **54 Craft operations** (20 Space, 14 Multi-Document, 20 Daily Notes), or **25 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
+The unreleased working tree exposes **63 Craft operations** (23 Space, 17 Multi-Document, 23 Daily Notes), or **25 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
 
 ### Space
 
@@ -270,6 +270,9 @@ All paths below start with `/v1/space`.
 | `POST /collections/{collectionId}/items`           | `craft_space_add_collection_item`               | One `{title,properties?:{key:"string"}}` item.                                                                                                  |
 | `PATCH /collections/{collectionId}/items/{itemId}` | `craft_space_update_collection_item_properties` | Nonempty `{properties:{key:"string"}}`; omitted keys preserved.                                                                                 |
 | `PATCH /collections/{collectionId}/items/{itemId}/title` | `craft_space_update_collection_item_title` | Rename with strict `{title}`; schema selects the native headline key, other fields preserved. |
+| `POST /collections/{collectionId}/items/{itemId}/content` | `craft_space_insert_collection_item_markdown` | Append/prepend `{markdown,position?}` to a verified entry body. |
+| `PATCH /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_space_update_collection_item_block_markdown` | Edit `{markdown}` on one verified body text block. |
+| `DELETE /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_space_delete_collection_item_block` | Confirmed leaf-text deletion; entry root and nested collections protected. |
 
 Use the `id` returned by document discovery as the API root block ID, or `documentId` returned by content search. `clickableLink` is a navigation link: its embedded `documentId` can differ from the API ID and return `404` if used in an API request. Do not extract IDs from it for content reads or writes. A collection block's `id` can also be its collection ID; block and collection IDs are not disjoint namespaces. There is no separate document-detail endpoint. Creation does not implicitly insert content: call insertion separately with the returned ID. Insertions may create multiple blocks.
 
@@ -284,6 +287,8 @@ Depth `0` reads only the requested root (or collection properties), positive val
 The implemented lists have no documented pagination; the wrapper adds no cursors, limits, or totals. Search is relevance-limited, not exhaustive. Prefer filters and finite depth: incoming bodies are capped at **1 MiB**, upstream responses at **8 MiB**, including streamed data. Oversized results produce an error instead of truncation.
 
 Collection reads allow dynamic JSON property values. Untitled rows can omit `title`, and `properties` can be empty or omitted. Writes accept **strings only** and use keys/options discovered from the schema. Craft validates whether a string is suitable for that property's type. Relations, JSON numeric/boolean/complex writes, and null clearing are unsupported. Rename a row through the separate title-update operation; the properties-only operation remains unchanged. Stored views are not executed. A populated Date property was live-verified as a `YYYY-MM-DD` string, preserved by the wrapper. Existing-row Date updates using this string format were also live-verified with read-back and restoration of the original value. Other date representations remain unverified.
+
+Collection entries have page-like bodies. Read one with `get_block` or `read_markdown`, using itemId as blockId and maxDepth=-1; finite depths return incomplete content/previews. Body insertion, single text-block updates, and confirmed leaf deletion use collection/item-scoped paths. Planner requires the owning collection as an approved target; fresh row membership and full structural checks run in all modes. Roots, nested collections/items, linked/property IDs, media and incomplete/ambiguous verification are protected. Title and regular properties remain separate from body edits; no whole-body replacement or transactional multi-call workflow is added.
 
 Each collection-item read resolves the current schema before fetching rows and exposes its headline as public `title`, including named columns. Creation and mutation responses use the same mapping. Missing default-title metadata falls back to the documented `title` key; empty keys and keys that conflict with item-envelope fields fail closed. Schema lookups are uncached, consume Craft budgets, and are reused within a single write request for validation/membership/mapping. Row reads bound schema plus data retrieval by one upstream deadline; writes retain the combined verification/submission deadline. Rename inputs cannot replace the schema, update regular properties, or clear the title.
 
@@ -307,6 +312,9 @@ All paths below start with `/v1/documents`. These routes use only `CRAFT_DOCUMEN
 | `POST /collections/{collectionId}/items` | `craft_documents_add_collection_item` |
 | `PATCH /collections/{collectionId}/items/{itemId}` | `craft_documents_update_collection_item_properties` |
 | `PATCH /collections/{collectionId}/items/{itemId}/title` | `craft_documents_update_collection_item_title` |
+| `POST /collections/{collectionId}/items/{itemId}/content` | `craft_documents_insert_collection_item_markdown` |
+| `PATCH /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_documents_update_collection_item_block_markdown` |
+| `DELETE /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_documents_delete_collection_item_block` |
 | `DELETE /blocks/{blockId}` | `craft_documents_delete_block` |
 | `DELETE /collections/{collectionId}/items/{itemId}` | `craft_documents_delete_collection_item` |
 
@@ -353,6 +361,9 @@ All paths below start with `/v1/daily` and use only `CRAFT_DAILY_BASE_URL`. Craf
 | `POST /collections/{collectionId}/items` | `craft_daily_add_collection_item` | Add one row with `{title, properties?}`; property values must be strings. |
 | `PATCH /collections/{collectionId}/items/{itemId}` | `craft_daily_update_collection_item_properties` | Update a nonempty string-valued `{properties}` mapping. |
 | `PATCH /collections/{collectionId}/items/{itemId}/title` | `craft_daily_update_collection_item_title` | Rename with strict `{title}`; schema selects the native headline key, other fields preserved. |
+| `POST /collections/{collectionId}/items/{itemId}/content` | `craft_daily_insert_collection_item_markdown` | Append/prepend `{markdown,position?}` to a verified entry body. |
+| `PATCH /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_daily_update_collection_item_block_markdown` | Edit `{markdown}` on one verified body text block. |
+| `DELETE /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_daily_delete_collection_item_block` | Confirmed leaf-text deletion; entry root and nested collections protected. |
 | `GET /tasks` | `craft_daily_list_tasks` | Required `scope=active\|upcoming\|inbox\|logbook`. |
 | `POST /tasks` | `craft_daily_add_task` | Create one native task, defaulting to the inbox. |
 | `PATCH /tasks/{taskId}` | `craft_daily_update_task` | Update selected content, state, schedule, or deadline fields. |
@@ -416,7 +427,7 @@ A write failure after submission can leave its outcome uncertain, including malf
 
 ### Workspace Python tool
 
-Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (20 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (14), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (20). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
+Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (23 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (17), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (23). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
 
 1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of the selected tool file into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
 2. Open the tool's **Valves** settings and configure the values below. The token field uses Open WebUI's [password input convention](https://docs.openwebui.com/features/extensibility/plugin/development/valves/); masking the input does not itself encrypt stored values. Restrict tool access to the intended users.
@@ -449,9 +460,34 @@ Nested query/body keys are forwarded without silently removing unknown fields. F
 
 Each result contains `request` (method, path, serialized query), `statusCode`, `requestId`, and the unchanged JSON `response`. This distinguishes a wrapper rejection from a tool connection/decoding failure. Authentication headers and write bodies are not included in request evidence. Wrapper error codes, retry guidance, and uncertain-write flags are preserved. The tool does not follow redirects or retry requests; failed writes after submission are marked uncertain. Results exceeding 9 MiB are rejected rather than truncated.
 
-Each Python tool keeps a static function list: 21 for Space, 15 for Multi-Document, and 21 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
+Each Python tool keeps a static function list: 24 for Space, 18 for Multi-Document, and 24 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
 
-To update the installed tool after pulling repository changes, replace its code in the Open WebUI editor with the current file and save it. Check its Valves settings afterward. Rebuilding the wrapper image does not update the separately installed Open WebUI tool. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
+To update manually, replace the installed tool's code in the Open WebUI editor with the current file and save it. Alternatively, use the script below. Rebuilding the wrapper image does not update the separately installed tools. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
+
+#### Update installed Python tools
+
+Run [scripts/update-tools.sh](scripts/update-tools.sh) from the clone with `uv` installed. It updates existing tools from local repository sources; it does not create tools or fetch remote Python. Select IDs explicitly so Test and everyday tools can be updated separately. After pulling, deploy the matching wrapper first.
+
+Set the Open WebUI base URL (including any deployment subpath, without `/api/v1`) and a write-capable **Open WebUI** token, distinct from wrapper/profile tokens. In Bash, read the token without echoing it or putting it in shell history:
+
+```bash
+export OWUI_URL=https://openwebui.example
+read -rs -p "Open WebUI API token: " OWUI_API_TOKEN
+export OWUI_API_TOKEN
+./scripts/update-tools.sh --list
+```
+
+Use the listed IDs, not display names. Example Test-tool update:
+
+```sh
+./scripts/update-tools.sh --tool space=craft_space_test --tool daily=craft_daily_test --dry-run
+./scripts/update-tools.sh --tool space=craft_space_test --tool daily=craft_daily_test --apply
+unset OWUI_API_TOKEN
+```
+
+Omitting `--apply` previews only. `--tool documents=YOUR_TOOL_ID` selects Multi-Document; repeat an adapter for multiple installed copies. Unchanged sources are skipped. The script preflights all selected tools, preserves names/descriptions, omits sharing grants and Valves from writes, and verifies saved source/metadata/sharing. Open WebUI regenerates manifest/function specs. No private source, token, or response body is printed; previews show source hashes rather than code diffs.
+
+This contract was checked against [Open WebUI v0.11.4's router](https://github.com/open-webui/open-webui/blob/v0.11.4/backend/open_webui/routers/tools.py) and [tool models](https://github.com/open-webui/open-webui/blob/v0.11.4/backend/open_webui/models/tools.py). Saving executes Python on Open WebUI and can install declared dependencies, as a UI save does. Use trusted local source and protect the credential. Redirects and retries are disabled; `OWUI_TIMEOUT_SECONDS` defaults to `60`. On an ambiguous save or verification failure, inspect the installed tool before retrying. Updates are sequential, can partially succeed, and are not atomic with concurrent editor changes. Start a fresh chat, check Valves and run a capability/read smoke test after updating; cross-worker reload and live deployment remain separate checks.
 
 ### OpenAPI tool server
 
@@ -474,7 +510,7 @@ uvx basedpyright
 
 `pyproject.toml` sets standard type checking for Pyright and basedpyright, using the project's `.venv` and Python 3.12. The editor and CLI use the same configuration; basedpyright's stricter annotation/style rules are not enabled by this preset. `uvx` runs the checker separately from application dependencies. See [basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/).
 
-All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 54 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
+All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 63 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
 
 Space response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Multi-Document tests use generic synthetic examples of documented responses, including deleted documents and scoped links. Daily Notes tests use generic synthetic fixtures for date-based content, search, collections, and partial task responses. Fixture generation never edits the source docs.
 
@@ -484,10 +520,12 @@ Direct Craft HTTP probes confirmed:
 
 - Collection schemas can return option objects and omit default-title metadata. Populated Date values were calendar-date strings.
 - A string-valued Date update persisted on read-back, and restoration preserved all original properties.
-- Default and named row headlines updated through their actual top-level schema keys. Returned row fields were restored exactly, with properties/nested content preserved. A hardcoded title key was invalid for the named column; the wrapper now maps the current headline key and exposes a separate title-update route. Live installed-tool checks of the new mapping are still pending.
+- Default and named row headlines updated through their actual top-level schema keys. Returned row fields were restored exactly, with properties/nested content preserved. A hardcoded title key was invalid for the named column; the wrapper now maps the current headline key and exposes a separate title-update route. Space Test create/rename/read-back checks passed for both default and named headlines; each newly created test row was removed with confirmation and the original rows retained their properties/nested content.
 - Secret-link-only authentication worked. Select-property writes and additional authentication mechanisms were not verified.
 
-Open WebUI execution reports and read-back checks cover Space collection/content planning, Space document-task and Daily inbox-task lifecycles, canceled/approved deletion, and unapproved-target denial. One uncertain Daily creation was found exactly once during inspection and was not repeated. The latency cause and visual rendering of the no-deletion status remain unconfirmed. See [profile observations](PROFILES.md#verification-observations--2026-10-07) for the evidence and limits.
+Open WebUI execution reports and read-back checks cover Space collection/content planning, Space document-task and Daily inbox-task lifecycles, canceled/approved deletion, and unapproved-target denial. One uncertain Daily creation was found exactly once during inspection and was not repeated. The latency cause and visual rendering of the no-deletion status remain unconfirmed. See [profile observations](PROFILES.md#verification-observations) for the evidence and limits.
+
+A direct HTTP probe created one disposable row, inserted/edited/read its body Markdown, deleted the new leaf block, and removed the probe row. Existing collection rows matched their prior returned state. The new scoped wrapper/tool body workflow is mock-tested; its installed-tool check remains pending.
 
 Automated regression fixtures contain synthetic values; private IDs, credentials, and captured content are excluded.
 

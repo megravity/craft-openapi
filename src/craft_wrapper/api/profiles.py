@@ -98,6 +98,9 @@ def add_capabilities(app: FastAPI, profile_id: str) -> None:
                         "add_collection_item",
                         "update_collection_item_properties",
                         "update_collection_item_title",
+                        "insert_collection_item_markdown",
+                        "update_collection_item_block_markdown",
+                        "delete_collection_item_block",
                         "delete_collection_item",
                     )
                 )

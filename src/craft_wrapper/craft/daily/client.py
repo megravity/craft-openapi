@@ -167,6 +167,19 @@ class DailyClient:
             self.transport, collection_id, item_id, title, schema=schema
         )
 
+    async def insert_collection_item_markdown(
+        self, item_id: str, markdown: str, position: str = "end"
+    ) -> Items[Block]:
+        return await operations.insert_markdown(self.transport, item_id, markdown, position)
+
+    async def update_collection_item_block_markdown(self, block_id: str, markdown: str) -> Block:
+        return await operations.update_collection_item_block_markdown(
+            self.transport, block_id, markdown
+        )
+
+    async def delete_collection_item_block(self, block_id: str) -> DeletedResource:
+        return await operations.delete_block(self.transport, block_id)
+
     async def delete_block(self, block_id: str) -> DeletedResource:
         return await operations.delete_block(self.transport, block_id)
 

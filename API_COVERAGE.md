@@ -25,12 +25,12 @@ Count upstream **method/path pairs separately per adapter**. Multiple wrapper ro
 
 | Adapter | Documented pairs | I | P | D | Represented pairs (I + P) | Public wrapper operations |
 |---|---:|---:|---:|---:|---:|---:|
-| Space | 44 | 2 | 16 | 26 | 18 | 20 |
-| Multi-Document | 33 | 1 | 11 | 21 | 12 | 14 |
-| Daily Notes | 36 | 2 | 13 | 21 | 15 | 20 |
-| **Total** | **113** | **5** | **40** | **68** | **45** | **54** |
+| Space | 44 | 2 | 16 | 26 | 18 | 23 |
+| Multi-Document | 33 | 1 | 11 | 21 | 12 | 17 |
+| Daily Notes | 36 | 2 | 13 | 21 | 15 | 23 |
+| **Total** | **113** | **5** | **40** | **68** | **45** | **63** |
 
-The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown and Daily Notes date/ID read splits, plus separate property/title update routes, account for the difference between 45 represented upstream pairs and 54 public operations.
+The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown and Daily Notes date/ID read splits, plus separate property/title and collection-body routes, account for the difference between 45 represented upstream pairs and 63 public operations.
 
 ## Upstream endpoint grid
 
@@ -112,6 +112,9 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 | `craft_space_add_collection_item` | `POST /v1/space/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_space_update_collection_item_properties` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
 | `craft_space_update_collection_item_title` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
+| `craft_space_insert_collection_item_markdown` | `POST /v1/space/collections/{collectionId}/items/{itemId}/content` | `POST /blocks` | [C9](#c9) | `Items[Block]` |
+| `craft_space_update_collection_item_block_markdown` | `PATCH /v1/space/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `PUT /blocks` | [C9](#c9) | `Block` |
+| `craft_space_delete_collection_item_block` | `DELETE /v1/space/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `DELETE /blocks` | [C9](#c9) | `DeletedResource` |
 | `craft_space_delete_collection_item` | `DELETE /v1/space/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
 | `craft_space_delete_block` | `DELETE /v1/space/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
@@ -134,6 +137,9 @@ Sources: [routes](src/craft_wrapper/api/documents.py), [client](src/craft_wrappe
 | `craft_documents_add_collection_item` | `POST /v1/documents/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_documents_update_collection_item_properties` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
 | `craft_documents_update_collection_item_title` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
+| `craft_documents_insert_collection_item_markdown` | `POST /v1/documents/collections/{collectionId}/items/{itemId}/content` | `POST /blocks` | [C9](#c9) | `Items[Block]` |
+| `craft_documents_update_collection_item_block_markdown` | `PATCH /v1/documents/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `PUT /blocks` | [C9](#c9) | `Block` |
+| `craft_documents_delete_collection_item_block` | `DELETE /v1/documents/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `DELETE /blocks` | [C9](#c9) | `DeletedResource` |
 | `craft_documents_delete_collection_item` | `DELETE /v1/documents/collections/{collectionId}/items/{itemId}` | `DELETE /collections/{collectionId}/items` | [C7](#c7) | `DeletedResource` |
 | `craft_documents_delete_block` | `DELETE /v1/documents/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
@@ -158,6 +164,9 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 | `craft_daily_add_collection_item` | `POST /v1/daily/collections/{collectionId}/items` | `POST /collections/{collectionId}/items` | [C2](#c2) | `CollectionItem` |
 | `craft_daily_update_collection_item_properties` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}` | `PUT /collections/{collectionId}/items` | [C3](#c3) | `CollectionItem` |
 | `craft_daily_update_collection_item_title` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}/title` | `PUT /collections/{collectionId}/items` | [C8](#c8) | `CollectionItem` |
+| `craft_daily_insert_collection_item_markdown` | `POST /v1/daily/collections/{collectionId}/items/{itemId}/content` | `POST /blocks` | [C9](#c9) | `Items[Block]` |
+| `craft_daily_update_collection_item_block_markdown` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `PUT /blocks` | [C9](#c9) | `Block` |
+| `craft_daily_delete_collection_item_block` | `DELETE /v1/daily/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `DELETE /blocks` | [C9](#c9) | `DeletedResource` |
 | `craft_daily_list_tasks` | `GET /v1/daily/tasks` | `GET /tasks` | [T1](#t1) | `Items[Task]` |
 | `craft_daily_add_task` | `POST /v1/daily/tasks` | `POST /tasks` | [T2](#t2) | `Task` |
 | `craft_daily_update_task` | `PATCH /v1/daily/tasks/{taskId}` | `PUT /tasks` | [T3](#t3) | `Task` |
@@ -208,7 +217,13 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 
 ### C8
 
-**Collection-item title updates — P in all adapters.** Strict UpdateCollectionTitle accepts only a nonempty title string. Fresh schema/membership reads verify the target (including legacy mode); planner requires an approved collection, while read-only/migration cannot rename. Maps to singleton `itemsToUpdate:[{id,<headlineKey>:title}]`, preserving other properties/content. Normalizes the response to CollectionItem.title and validates the echoed ID. Partial responses remain partial; empty/multiple/mismatched/ambiguous results are uncertain failures after submission. No schema replacement, title clearing, batch updates, retries, or rollback. Native-key payloads passed direct Space HTTP probes for both tested shapes; the new wrapper/tool flow is covered by mocks and still needs installed-tool verification.
+**Collection-item title updates — P in all adapters.** Strict UpdateCollectionTitle accepts only a nonempty title string. Fresh schema/membership reads verify the target (including legacy mode); planner requires an approved collection, while read-only/migration cannot rename. Maps to singleton `itemsToUpdate:[{id,<headlineKey>:title}]`, preserving other properties/content. Normalizes the response to CollectionItem.title and validates the echoed ID. Partial responses remain partial; empty/multiple/mismatched/ambiguous results are uncertain failures after submission. No schema replacement, title clearing, batch updates, retries, or rollback. Native-key payloads passed direct Space HTTP probes for both tested shapes; Space installed-tool creation/rename/read-back and cleanup passed for both shapes; the other adapter variants retain mocked coverage.
+
+### C9
+
+**Collection-item body writes — P in all adapters.** Collection/item-scoped routes reuse InsertMarkdown/UpdateMarkdown and the existing upstream block payloads. Every mode verifies fresh collection membership and the echoed collectionItem root at maxDepth=-1. Insertion targets that itemId as pageId; text updates/delete require actual content membership, excluding nested collection/item subtrees and IDs in properties/links. Root/media edits and non-leaf deletion are unavailable. Titles/properties are separate; no whole-body replacement, movement or simulated transaction. Planner requires an approved collection; read-only/migration cannot edit bodies. Leaf deletion uses a captured-request Python confirmation showing collection/item/block IDs. Wrong returned IDs, malformed results and lost responses are uncertain after submission; proof failures prevent writes.
+
+The existing get_block/read_markdown endpoints read an entry by itemId; finite depth is incomplete. A direct Space HTTP disposable-row probe passed insert/update/rendered read/leaf deletion, followed by exact restoration of existing collection rows after probe-row removal. The scoped wrapper/tool workflow is mock-tested across adapters and still needs its installed-tool check.
 
 ### C4
 
@@ -330,6 +345,7 @@ These links identify automated regression coverage already present in the reposi
 | All Multi-Document mappings, including L2/C5/S1 | [test_documents_api.py](tests/test_documents_api.py): `test_operation_contracts`, invalid filters, string boundary, connection isolation; [test_documents_client.py](tests/test_documents_client.py): include/exclude/default forwarding, deletion status, metadata, opaque IDs. |
 | All Daily Notes mappings, including C6/S2/T1–T4 | [test_daily_api.py](tests/test_daily_api.py): `test_daily_operation_contracts`, invalid queries/writes, task scopes, uncertain singleton results, client isolation; [test_daily_client.py](tests/test_daily_client.py): ID encoding and selector separation. |
 | B1/C1/C4 modeled responses and S1 result preservation | [test_space_api.py](tests/test_space_api.py): nested rows/previews, dynamic values/date strings; [test_space_client.py](tests/test_space_client.py): option objects, sparse schemas, malformed rows, known-field projection, extra/repeated search results. Names containing `live` still use mocks. |
+| Entry bodies C9 | [test_collection_content.py](tests/test_collection_content.py): exact payloads/root selectors, role/target/native membership, protected roots/nested collections/media, incomplete/ambiguous reads, deadline/expiry and captured-context confirmation workflows. |
 | Headline mappings C1–C3/C8 | [test_collection_headlines.py](tests/test_collection_headlines.py): default/named/optional metadata, exact schema/payload mappings, nested preservation, role/target isolation, reserved keys, uncertain results, deadlines, expiry, and standalone-tool workflows across adapters. |
 | Space task writes T6–T8 | [test_space_tasks.py](tests/test_space_tasks.py): exact payloads/headers, independent connection, role/target/native membership checks, partial/singleton outcomes, deadlines, expiry, and the profile tool confirmation workflow. |
 | Public tool mappings/workflows | [test_openwebui_tool.py](tests/test_openwebui_tool.py): exact current function sets, all mappings, Daily Notes date/task workflow, validation forwarding and permissions. |
@@ -339,7 +355,7 @@ These links identify automated regression coverage already present in the reposi
 
 Direct HTTP scratch-row probes confirmed headline updates for default/named columns using their actual top-level schema keys. Returned row fields were restored exactly, with properties/nested content preserved. The earlier hardcoded-title candidate was rejected for the named column. [Synthetic observations](tests/fixtures/title-write-probe.json) record that contract without live IDs or private payloads.
 
-[Profile observations](PROFILES.md#verification-observations--2026-10-07) distinguish installed Open WebUI execution reports/read-back checks from direct HTTP probes. Verification is limited to those workflows and tested shapes; untested variants and visual UI behavior retain their stated gaps. [README observations](README.md#verification-observations) summarize the earlier schema/date probes.
+[Profile observations](PROFILES.md#verification-observations) distinguish installed Open WebUI execution reports/read-back checks from direct HTTP probes. Verification is limited to those workflows and tested shapes; untested variants and visual UI behavior retain their stated gaps. [README observations](README.md#verification-observations) summarize the earlier schema/date probes.
 
 ## Keeping the matrix current
 

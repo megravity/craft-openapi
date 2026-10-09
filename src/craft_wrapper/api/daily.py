@@ -278,6 +278,73 @@ def make_router() -> APIRouter:
             collectionId, body.title, body.properties, schema=schema
         )
 
+    @router.post(
+        "/collections/{collectionId}/items/{itemId}/content",
+        operation_id="craft_daily_insert_collection_item_markdown",
+        status_code=201,
+        response_model=Items[Block],
+        response_model_exclude_none=True,
+        summary="Add Markdown context inside one collection entry",
+        description="Append/prepend Markdown to an existing entry body; its title/properties "
+        "are preserved. Obtain itemId from collection reads. Fresh collection membership and "
+        "the full item structure are verified in every mode; planner requires an approved "
+        "collection. Multiple text/page blocks can be created. Read the body with read_markdown "
+        "using itemId as blockId and maxDepth=-1. No retries; inspect uncertain outcomes.",
+    )
+    async def insert_item_markdown(
+        collectionId: Identifier,
+        itemId: Identifier,
+        body: InsertMarkdown,
+        client: Client,
+        request: Request,
+    ):
+        await authorize_write(request)
+        return await client.insert_collection_item_markdown(itemId, body.markdown, body.position)
+
+    @router.patch(
+        "/collections/{collectionId}/items/{itemId}/blocks/{blockId}",
+        operation_id="craft_daily_update_collection_item_block_markdown",
+        response_model=Block,
+        response_model_exclude_none=True,
+        summary="Edit one text block inside a collection entry",
+        description="Replace one text block's Markdown, preserving other entry content, "
+        "title and properties. Use block IDs from get_block(itemId,maxDepth=-1). Verify fresh "
+        "collection/item ownership and structural membership in every mode; planner requires "
+        "an approved collection. The item root, nested collections/items, links/properties "
+        "and non-text resources cannot be targets. No whole-body replacement or retries.",
+    )
+    async def update_item_block(
+        collectionId: Identifier,
+        itemId: Identifier,
+        blockId: Identifier,
+        body: UpdateMarkdown,
+        client: Client,
+        request: Request,
+    ):
+        await authorize_write(request)
+        return await client.update_collection_item_block_markdown(blockId, body.markdown)
+
+    @router.delete(
+        "/collections/{collectionId}/items/{itemId}/blocks/{blockId}",
+        operation_id="craft_daily_delete_collection_item_block",
+        response_model=DeletedResource,
+        summary="Delete one verified leaf text block inside a collection entry",
+        description="Delete only a leaf text block in the verified entry structure. Fresh "
+        "collection/item membership is required in every mode; planner requires an approved "
+        "collection. Roots, descendants, nested collections/items and media are protected. "
+        "Python tools require a live confirmation; authorized raw HTTP does not. "
+        "No retries or rollback; inspect uncertain outcomes before repeating.",
+    )
+    async def delete_item_block(
+        collectionId: Identifier,
+        itemId: Identifier,
+        blockId: Identifier,
+        client: Client,
+        request: Request,
+    ):
+        await authorize_write(request)
+        return await client.delete_collection_item_block(blockId)
+
     @router.patch(
         "/collections/{collectionId}/items/{itemId}/title",
         operation_id="craft_daily_update_collection_item_title",

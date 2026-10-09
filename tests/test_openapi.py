@@ -46,7 +46,7 @@ def test_openapi_valid_and_exact_operation_set(settings, preset):
     validate(spec)
     assert spec["openapi"] == "3.1.0"
     ops = operations(spec)
-    assert len(ops) == 20
+    assert len(ops) == 23
     assert {op["operationId"] for op in ops} == OPERATION_IDS
     assert all(op["security"] == [{"WrapperBearer": []}] for op in ops)
     assert all(op["description"] and op["summary"] for op in ops)

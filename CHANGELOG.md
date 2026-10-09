@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a manual Open WebUI tool-update command with explicit installed-tool selection, default preview, unchanged-source skipping, preflight/read-back checks, preserved sharing/Valves, and sanitized errors without retries. Verify the API contract against v0.11.4 and test updates with mocked responses; live instance verification remains separate.
+
+- Add collection-scoped entry-body Markdown insertion, text-block updates, and confirmed leaf deletion across adapters. Verify fresh membership and complete item structure, protect roots/nested collections/media, and preserve titles/properties. Record default/named Space headline smoke checks and the isolated HTTP body contract probe; leave metadata at 0.4.0.
+
 - Normalize collection headlines through their current schema across all adapters, map row creation/mutation responses, and add protected singleton title-update routes/tools. Reuse fresh schema data within each write request, bound row schema/data reads together, reject unsafe keys and ambiguous results, and retain string-only property writes.
 
 - Add document-targeted Space task creation, partial updates/completion, and confirmed leaf-task deletion. Require owning context and fresh structural/native-task proofs, enforce planner document targets, and keep inbox/daily-note targets, movement, and clearing outside this checkpoint.

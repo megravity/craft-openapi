@@ -37,9 +37,9 @@ def structural_members(root: Block) -> dict[str, Block]:
     pending = [root]
     while pending:
         node = pending.pop()
-        if node.type == "collection":
+        if node.type == "collection" or (node is not root and node.type == "collectionItem"):
             continue
-        if node.contentPreviewMd or node.itemsPreviewMd:
+        if node.contentPreviewMd is not None or node.itemsPreviewMd is not None:
             raise CraftError(
                 "craft_upstream_error", "Craft returned incomplete verification content."
             )
@@ -54,7 +54,11 @@ def structural_members(root: Block) -> dict[str, Block]:
 
 
 async def verified_members(
-    transport: CraftTransport, params: dict[str, str | int], expected_root: str | None
+    transport: CraftTransport,
+    params: dict[str, str | int],
+    expected_root: str | None,
+    *,
+    root_types: tuple[str, ...] = ("page",),
 ) -> tuple[Block, dict[str, Block]]:
     data = await transport.request("GET", "blocks", params=params)
     try:
@@ -63,7 +67,7 @@ async def verified_members(
         raise CraftError(
             "craft_upstream_error", "Craft returned invalid verification content."
         ) from None
-    if root.type != "page" or (expected_root is not None and root.id != expected_root):
+    if root.type not in root_types or (expected_root is not None and root.id != expected_root):
         raise CraftError("craft_upstream_error", "Craft returned an unexpected verification root.")
     return root, structural_members(root)
 
@@ -111,6 +115,13 @@ async def authorize_write(request: Request) -> CollectionSchema | None:
 
     collection_id = request.path_params.get("collectionId")
     if collection_id is not None:
+        item_content = operation.endswith(
+            (
+                "_insert_collection_item_markdown",
+                "_update_collection_item_block_markdown",
+                "_delete_collection_item_block",
+            )
+        )
         if profile is not None and collection_id not in profile.targets(adapter).collectionIds:
             denied()
         schema = await client.get_collection_schema(collection_id)
@@ -138,6 +149,7 @@ async def authorize_write(request: Request) -> CollectionSchema | None:
         item_id = request.path_params.get("itemId")
         if item_id is not None and (
             profile is not None
+            or item_content
             or operation.endswith(("_delete_collection_item", "_update_collection_item_title"))
         ):
             items = await client.list_collection_items(collection_id, 0, schema=schema)
@@ -148,6 +160,22 @@ async def authorize_write(request: Request) -> CollectionSchema | None:
                 )
             if matches == 0:
                 denied()
+        if item_content:
+            assert item_id is not None
+            root, members = await verified_members(
+                client.transport,
+                {"id": item_id, "maxDepth": -1},
+                item_id,
+                root_types=("collectionItem",),
+            )
+            block_id = request.path_params.get("blockId")
+            if block_id is not None:
+                node = members.get(block_id)
+                if node is None or node.id == root.id or node.type != "text":
+                    denied()
+                assert node is not None
+                if request.method == "DELETE" and (node.content or node.items):
+                    denied()
         ensure_active(request)
         return schema
 

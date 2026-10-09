@@ -75,6 +75,17 @@ async def update_block_markdown(transport: CraftTransport, block_id: str, markdo
     return single(result)
 
 
+async def update_collection_item_block_markdown(
+    transport: CraftTransport, block_id: str, markdown: str
+) -> Block:
+    resource = await update_block_markdown(transport, block_id, markdown)
+    if resource.id != block_id:
+        raise CraftError(
+            "craft_upstream_error", "Craft returned an unexpected block ID.", outcome_unknown=True
+        )
+    return resource
+
+
 async def get_collection_schema(transport: CraftTransport, collection_id: str) -> CollectionSchema:
     return await request_model(
         transport,

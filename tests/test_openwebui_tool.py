@@ -446,7 +446,7 @@ def test_private_request_logging_suppressed_and_filter_removed(
 def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == {"space": 21, "documents": 15, "daily": 21}[adapter(tool)]
+    assert len(public) == {"space": 24, "documents": 18, "daily": 24}[adapter(tool)]
     assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
     method = operation(tool, "list_documents")
     hints = get_type_hints(method)

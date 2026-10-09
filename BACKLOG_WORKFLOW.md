@@ -4,9 +4,9 @@ Use an existing Craft collection for undated planning items and native tasks for
 
 ## Prepare the collection
 
-Create the backlog manually in Craft. The built-in Title column and explicitly named title columns use the same public title field. Fresh schema reads select Craft's actual top-level headline key for creation, reads, and updates. Rename existing rows through update_collection_item_title with a nonempty title; properties-only updates remain separate and preserve the headline. Direct HTTP probes passed default/named title updates with exact restoration; installed-tool verification of the new mapping is pending.
+Create the backlog manually in Craft. The built-in Title column and explicitly named title columns use the same public title field. Fresh schema reads select Craft's actual top-level headline key for creation, reads, and updates. Rename existing rows through update_collection_item_title with a nonempty title; properties-only updates remain separate and preserve the headline. Direct HTTP probes passed default/named title updates with exact restoration; Space installed-tool checks passed for both headline shapes.
 
-Add text columns for **Source task ID** and, optionally, **Scheduled task ID**. Status and priority columns can use existing select options. Keep original task text in a text property if needed. Inspect `get_collection_schema` and use actual property keys, not assumed display names. Collection writes accept strings; the upstream validates legal values. Relations, complex writes, schema changes, and automatic collection creation remain outside this workflow.
+Add text columns for **Source task ID** and, optionally, **Scheduled task ID**. Status and priority columns can use existing select options. Add an **Area** single-select column for broad domains (for example Work, Personal, Home, Learning), using agreed options. Keep detailed context in the entry body: background, desired outcome, notes and links. Resolve the actual schema keys after creation; avoid combining domain and task type into one field. Inspect `get_collection_schema` and use actual property keys, not assumed display names. Collection writes accept strings; the upstream validates legal values. Relations, complex writes, schema changes, and automatic collection creation remain outside this workflow.
 
 Record the collection ID in the migration profile, set a near-term expiration, and use its own credential. The migration profile can read selected adapters but can only add rows to this one collection. Planner and migration tools must not share credentials. See [profile setup](PROFILES.md).
 
@@ -21,13 +21,21 @@ Record the collection ID in the migration profile, set a near-term expiration, a
 
 Source IDs help a person or agent check for duplicates; they do not create a server-enforced uniqueness constraint. Concurrent or repeated additions can still duplicate rows. The wrapper never retries writes automatically.
 
+## Entry context
+
+Read one entry by passing its itemId as blockId to get_block/read_markdown with maxDepth=-1. Craft-rendered Markdown includes collection tags/title/properties and nested body content. Use list_collection_items for structured properties; its default depth 0 omits the body.
+
+Add context through insert_collection_item_markdown (position start/end), then read the returned blocks. Update a selected text-block ID through update_collection_item_block_markdown; delete a leaf through delete_collection_item_block with live confirmation. Each call carries collectionId and itemId so the wrapper can verify the approved collection and fresh structural membership. Generic document writes cannot enter collection subtrees. Title/property changes remain separate, and no whole-body replacement is provided.
+
+Creation and body insertion are separate writes. If insertion fails, the row may already exist; inspect it and report partial completion instead of recreating the row. Migration remains row-creation-only and cannot insert bodies; preserve source tasks and review any subsequent context edits through planner separately.
+
 ## Everyday scheduling
 
 Keep the collection row as the planning record. When scheduled work should appear in native tasks, create a task through the Daily tool with an inbox/daily-note target and schedule/deadline fields. Store its returned ID in the Scheduled task ID text property and record the backlink to the backlog row in task Markdown if useful.
 
 After completing/canceling the native task, explicitly update the row's status. Treat those as separate calls, verify their results, and report partial completion instead of claiming synchronization. Task dates are not timed reminders.
 
-The unreleased Space adapter can create, reschedule, edit, complete/cancel, and delete native tasks within approved planning documents. Creation includes documentId in the body; updates/deletion require owning documentId query context and fresh structural/native-task membership checks. Only leaf tasks can be deleted. Keep inbox/daily-note writes on the Daily tool. Installed-tool checks passed creation, rescheduling, completion in place, canceled/approved deletion, and unapproved-root denial; see [verification observations](PROFILES.md#verification-observations--2026-10-07). Movement, date clearing, and nested row-note editing remain unsupported. Do not retire MCP for workflows the pilot has not covered.
+The unreleased Space adapter can create, reschedule, edit, complete/cancel, and delete native tasks within approved planning documents. Creation includes documentId in the body; updates/deletion require owning documentId query context and fresh structural/native-task membership checks. Only leaf tasks can be deleted. Keep inbox/daily-note writes on the Daily tool. Installed-tool checks passed creation, rescheduling, completion in place, canceled/approved deletion, and unapproved-root denial; see [verification observations](PROFILES.md#verification-observations). Scoped entry-body insertion, text-block edits, and confirmed leaf deletion are available. Movement and date clearing remain unsupported. Do not retire MCP for workflows the pilot has not covered.
 
 ## Acceptance before retiring MCP
 
