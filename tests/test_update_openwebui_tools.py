@@ -367,3 +367,107 @@ def test_cli_rejects_invalid_credentials_without_echoing(
     assert "Set OWUI_API_TOKEN" in message
     assert "synthetic-key" not in message
     assert "nonascii" not in message
+
+
+@pytest.fixture(autouse=True)
+def isolate_updater_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(updater, "SETTINGS_FILE", tmp_path / ".openwebui-tools.env")
+    for key in ("OWUI_URL", "OWUI_API_TOKEN", "OWUI_TIMEOUT_SECONDS"):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_config_file_loads_without_environment_or_prompt(
+    sources: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    updater.SETTINGS_FILE.write_text(
+        '# Local updater only\nOWUI_URL="https://owui.example/prefix"\n'
+        "OWUI_API_TOKEN='synthetic-file-token'\nOWUI_TIMEOUT_SECONDS=35\n"
+    )
+    before = updater.SETTINGS_FILE.read_bytes()
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.headers["authorization"] == "Bearer synthetic-file-token"
+        assert request.url.path == "/prefix/api/v1/tools/id/space_test"
+        return httpx.Response(200, json=record())
+
+    real_client = httpx.Client
+
+    def client(**kwargs: Any) -> httpx.Client:
+        assert kwargs["timeout"] == 35
+        return real_client(**kwargs, transport=httpx.MockTransport(respond))
+
+    monkeypatch.setattr(updater.httpx, "Client", client)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("No credential prompt expected"))
+    assert updater.main(["--tool", "space=space_test"]) == 0
+    assert "would update" in capsys.readouterr().out
+    assert len(requests) == 1
+    assert updater.SETTINGS_FILE.read_bytes() == before
+
+
+def test_environment_overrides_file(monkeypatch: pytest.MonkeyPatch):
+    updater.SETTINGS_FILE.write_text(
+        "OWUI_URL=https://file.example\nOWUI_API_TOKEN=file-token\nOWUI_TIMEOUT_SECONDS=35\n"
+    )
+    monkeypatch.setenv("OWUI_URL", "https://override.example")
+    monkeypatch.setenv("OWUI_API_TOKEN", "override-token")
+    monkeypatch.setenv("OWUI_TIMEOUT_SECONDS", "25")
+    settings = updater.load_updater_settings()
+    assert settings.OWUI_URL == "https://override.example"
+    assert settings.OWUI_API_TOKEN.get_secret_value() == "override-token"
+    assert settings.OWUI_TIMEOUT_SECONDS == 25
+    assert "override-token" not in repr(settings)
+
+
+def test_blank_environment_override_does_not_use_file_token(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    updater.SETTINGS_FILE.write_text("OWUI_URL=https://owui.example\nOWUI_API_TOKEN=file-token\n")
+    monkeypatch.setenv("OWUI_API_TOKEN", "")
+    assert updater.main(["--list"]) == 1
+    output = capsys.readouterr()
+    assert "Set OWUI_API_TOKEN" in output.err
+    assert "file-token" not in output.err
+
+
+def test_missing_config_file_still_allows_environment(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OWUI_URL", "https://owui.example")
+    monkeypatch.setenv("OWUI_API_TOKEN", "env-token")
+    settings = updater.load_updater_settings()
+    assert not updater.SETTINGS_FILE.exists()
+    assert settings.OWUI_API_TOKEN.get_secret_value() == "env-token"
+    assert settings.OWUI_TIMEOUT_SECONDS == 60
+
+
+def test_wrapper_dotenv_is_not_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    (tmp_path / ".env").write_text("OWUI_URL=https://wrong.example\nOWUI_API_TOKEN=wrong-token\n")
+    monkeypatch.chdir(tmp_path)
+    settings = updater.load_updater_settings()
+    assert settings.OWUI_URL == ""
+    assert settings.OWUI_API_TOKEN.get_secret_value() == ""
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        b"OWUI_TIMEOUT_SECONDS=synthetic-private-value\nOWUI_API_TOKEN=synthetic-file-token\n",
+        b"UNKNOWN_KEY=synthetic-file-token\n",
+        b"OWUI_URL=\xff\nOWUI_API_TOKEN=synthetic-file-token\n",
+    ],
+)
+def test_invalid_config_errors_never_expose_values(
+    config: bytes, capsys: pytest.CaptureFixture[str]
+):
+    updater.SETTINGS_FILE.write_bytes(config)
+    assert updater.main(["--list"]) == 1
+    output = capsys.readouterr()
+    assert "Tool update error" in output.err
+    assert "synthetic-file-token" not in output.err + output.out
+    assert "synthetic-private-value" not in output.err + output.out

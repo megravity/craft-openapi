@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Load Open WebUI updater credentials automatically from an ignored repository-root `.openwebui-tools.env`, with environment overrides and a one-time setup example; remove repeated token-entry instructions.
+
 - Add a manual Open WebUI tool-update command with explicit installed-tool selection, default preview, unchanged-source skipping, preflight/read-back checks, preserved sharing/Valves, and sanitized errors without retries. Verify the API contract against v0.11.4 and test updates with mocked responses; live instance verification remains separate.
 
 - Add collection-scoped entry-body Markdown insertion, text-block updates, and confirmed leaf deletion across adapters. Verify fresh membership and complete item structure, protect roots/nested collections/media, and preserve titles/properties. Record default/named Space headline smoke checks and the isolated HTTP body contract probe; leave metadata at 0.4.0.

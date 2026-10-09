@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 import re
 import sys
 from dataclasses import dataclass
@@ -15,8 +14,11 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
+from pydantic import SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO = Path(__file__).resolve().parents[1]
+SETTINGS_FILE = REPO / ".openwebui-tools.env"
 TOOL_PATHS = {
     adapter: REPO / "integrations" / "openwebui" / f"craft_{adapter}_tool.py"
     for adapter in ("space", "documents", "daily")
@@ -26,6 +28,34 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 class UpdateError(Exception):
     """Safe CLI diagnostic; never include remote bodies, URLs, or credentials."""
+
+
+class UpdaterSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file_encoding="utf-8", case_sensitive=True, extra="forbid", hide_input_in_errors=True
+    )
+
+    OWUI_URL: str = ""
+    OWUI_API_TOKEN: SecretStr = SecretStr("")
+    OWUI_TIMEOUT_SECONDS: float = 60
+
+    def __init__(self, **values: Any) -> None:
+        super().__init__(**values)
+
+
+def load_updater_settings() -> UpdaterSettings:
+    try:
+        return UpdaterSettings(_env_file=SETTINGS_FILE)
+    except ValidationError as error:
+        if any(detail["loc"] == ("OWUI_TIMEOUT_SECONDS",) for detail in error.errors()):
+            raise UpdateError("OWUI_TIMEOUT_SECONDS must be positive and finite.") from None
+        raise UpdateError(
+            "Invalid updater configuration; check .openwebui-tools.env and OWUI_* overrides."
+        ) from None
+    except (OSError, UnicodeError):
+        raise UpdateError(
+            "Invalid updater configuration; check .openwebui-tools.env and OWUI_* overrides."
+        ) from None
 
 
 @dataclass
@@ -202,16 +232,14 @@ def main(argv: list[str] | None = None) -> int:
     for logger_name in ("httpx", "httpcore"):
         logging.getLogger(logger_name).disabled = True
     try:
-        url = base_url(os.environ.get("OWUI_URL", ""))
-        token = os.environ.get("OWUI_API_TOKEN", "")
+        settings = load_updater_settings()
+        url = base_url(settings.OWUI_URL)
+        token = settings.OWUI_API_TOKEN.get_secret_value()
         if not token or not token.isascii() or any(character.isspace() for character in token):
             raise UpdateError(
                 "Set OWUI_API_TOKEN to an Open WebUI bearer token without its prefix."
             )
-        try:
-            timeout = float(os.environ.get("OWUI_TIMEOUT_SECONDS", "60"))
-        except ValueError:
-            raise UpdateError("OWUI_TIMEOUT_SECONDS must be positive and finite.") from None
+        timeout = settings.OWUI_TIMEOUT_SECONDS
         if not math.isfinite(timeout) or timeout <= 0:
             raise UpdateError("OWUI_TIMEOUT_SECONDS must be positive and finite.")
         with httpx.Client(

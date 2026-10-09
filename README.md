@@ -468,12 +468,12 @@ To update manually, replace the installed tool's code in the Open WebUI editor w
 
 Run [scripts/update-tools.sh](scripts/update-tools.sh) from the clone with `uv` installed. It updates existing tools from local repository sources; it does not create tools or fetch remote Python. Select IDs explicitly so Test and everyday tools can be updated separately. After pulling, deploy the matching wrapper first.
 
-Set the Open WebUI base URL (including any deployment subpath, without `/api/v1`) and a write-capable **Open WebUI** token, distinct from wrapper/profile tokens. In Bash, read the token without echoing it or putting it in shell history:
+Configure this once: copy [.openwebui-tools.env.example](.openwebui-tools.env.example) to `.openwebui-tools.env`, protect it, and edit its URL/token in your text editor. Keep an existing file when updating the repository.
 
-```bash
-export OWUI_URL=https://openwebui.example
-read -rs -p "Open WebUI API token: " OWUI_API_TOKEN
-export OWUI_API_TOKEN
+```sh
+cp -n .openwebui-tools.env.example .openwebui-tools.env
+chmod 600 .openwebui-tools.env
+nano .openwebui-tools.env
 ./scripts/update-tools.sh --list
 ```
 
@@ -482,8 +482,9 @@ Use the listed IDs, not display names. Example Test-tool update:
 ```sh
 ./scripts/update-tools.sh --tool space=craft_space_test --tool daily=craft_daily_test --dry-run
 ./scripts/update-tools.sh --tool space=craft_space_test --tool daily=craft_daily_test --apply
-unset OWUI_API_TOKEN
 ```
+
+The updater automatically reads `.openwebui-tools.env` from the repository root, including when launched from another directory. The file is ignored by Git and excluded from the Docker image. Set `OWUI_URL` to the Open WebUI base URL (including any subpath, without `/api/v1`) and `OWUI_API_TOKEN` to a write-capable **Open WebUI** token, distinct from wrapper/profile tokens. Exported `OWUI_*` environment variables take precedence; no token prompt is needed. The wrapper's `.env` is not loaded by this command.
 
 Omitting `--apply` previews only. `--tool documents=YOUR_TOOL_ID` selects Multi-Document; repeat an adapter for multiple installed copies. Unchanged sources are skipped. The script preflights all selected tools, preserves names/descriptions, omits sharing grants and Valves from writes, and verifies saved source/metadata/sharing. Open WebUI regenerates manifest/function specs. No private source, token, or response body is printed; previews show source hashes rather than code diffs.
 

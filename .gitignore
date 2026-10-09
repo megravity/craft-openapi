@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .portainer-webhook
+.openwebui-tools.env
 .venv/
 .uv-cache/
 __pycache__/
