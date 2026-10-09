@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace the Python/uv tool updater with a standalone curl/jq shell script, keeping saved credentials, explicit selection, previews, configuration preservation, and verified updates.
+
 - Load Open WebUI updater credentials automatically from an ignored repository-root `.openwebui-tools.env`, with environment overrides and a one-time setup example; remove repeated token-entry instructions.
 
 - Add a manual Open WebUI tool-update command with explicit installed-tool selection, default preview, unchanged-source skipping, preflight/read-back checks, preserved sharing/Valves, and sanitized errors without retries. Verify the API contract against v0.11.4 and test updates with mocked responses; live instance verification remains separate.
