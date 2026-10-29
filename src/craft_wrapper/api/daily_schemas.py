@@ -2,7 +2,13 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from craft_wrapper.api.schemas import BlockDepth, CraftDate, InputModel, NonemptyText
+from craft_wrapper.api.schemas import (
+    BlockDepth,
+    CraftDate,
+    InputModel,
+    NonemptyText,
+    StructuredBlockRead,
+)
 from craft_wrapper.api.schemas import UpdateTask as UpdateTask
 
 
@@ -18,7 +24,11 @@ class DailyWriteContext(InputModel):
     )
 
 
-class DailyNoteRead(DailyNoteSelector, BlockDepth):
+class DailyNoteRead(DailyNoteSelector, StructuredBlockRead):
+    pass
+
+
+class DailyNoteMarkdownRead(DailyNoteSelector, BlockDepth):
     pass
 
 

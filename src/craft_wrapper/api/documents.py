@@ -18,6 +18,7 @@ from craft_wrapper.api.schemas import (
     InsertMarkdown,
     ItemDepth,
     MarkdownContent,
+    StructuredBlockRead,
     UpdateCollectionProperties,
     UpdateCollectionTitle,
     UpdateMarkdown,
@@ -95,8 +96,10 @@ def make_router() -> APIRouter:
         "read_markdown for reading and summarization. Craft scoped links and "
         "invalid:out_of_scope markers are preserved.",
     )
-    async def get_block(blockId: Identifier, client: Client, depth: Annotated[BlockDepth, Query()]):
-        return await client.get_block(blockId, depth.maxDepth)
+    async def get_block(
+        blockId: Identifier, client: Client, depth: Annotated[StructuredBlockRead, Query()]
+    ):
+        return await client.get_block(blockId, depth.maxDepth, depth.fetchMetadata)
 
     @router.get(
         "/blocks/{blockId}/markdown",

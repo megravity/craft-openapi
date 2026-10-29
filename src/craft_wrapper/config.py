@@ -18,6 +18,8 @@ SPACE_OPERATION_IDS = frozenset(
     {
         "craft_space_list_folders",
         "craft_space_list_tasks",
+        "craft_space_get_task",
+        "craft_space_get_connection_info",
         "craft_space_add_task",
         "craft_space_update_task",
         "craft_space_delete_task",
@@ -46,6 +48,8 @@ SPACE_READ_OPERATION_IDS = frozenset(
     {
         "craft_space_list_folders",
         "craft_space_list_tasks",
+        "craft_space_get_task",
+        "craft_space_get_connection_info",
         "craft_space_list_documents",
         "craft_space_search_documents",
         "craft_space_get_block",
@@ -99,6 +103,8 @@ DAILY_READ_OPERATION_IDS = frozenset(
         "craft_daily_get_collection_schema",
         "craft_daily_list_collection_items",
         "craft_daily_list_tasks",
+        "craft_daily_get_task",
+        "craft_daily_get_connection_info",
     }
 )
 DAILY_OPERATION_IDS = DAILY_READ_OPERATION_IDS | frozenset(

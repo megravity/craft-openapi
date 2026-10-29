@@ -326,6 +326,7 @@ def test_capability_discovery_and_document_context_forwarding(tool_context):
 
     connect(handler)
     result = asyncio.run(getattr(tool, f"craft_{adapter}_get_capabilities")())
+    assert f"version: {result['toolVersion']}\n" in module.__doc__
     assert result["response"]["operations"] == [op]
     result = asyncio.run(
         getattr(tool, op)(

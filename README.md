@@ -170,6 +170,31 @@ docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontaine
 
 For an exact source release, check out its Git tag before building. Updating the wrapper image and updating the installed Open WebUI Python tool remain separate steps.
 
+### Identify development builds
+
+Local builds have a separate identifier such as `0.4.0-dev.a1b2c3d4e5f6`. The suffix is the first 12 hexadecimal characters of a SHA-256 source fingerprint, not a release counter. It includes uncommitted source changes, stays stable across repeated builds, and excludes credentials and private configuration. The base number is the last prepared release; it does not promote these changes to 0.5.0.
+
+The image build script records the wrapper's build ID and Git revision as labels. Compare the local image and running container to check whether a rebuild was deployed:
+
+```sh
+./scripts/build-id.sh wrapper
+docker image inspect craft-openapi-wrapper:local --format '{{ index .Config.Labels "io.craft-wrapper.build-id" }}'
+docker inspect craft-wrapper --format '{{ index .Config.Labels "io.craft-wrapper.build-id" }}'
+docker inspect craft-wrapper --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}'
+```
+
+The fingerprint covers `src/**/*.py`, `pyproject.toml`, `uv.lock`, `Dockerfile`, and `.dockerignore`. The revision identifies the checkout's HEAD; the fingerprint also distinguishes uncommitted code. Direct `docker build`/Compose builds without the script leave the build labels `unknown`. Older images have no build label.
+
+**Installed tools:** `update-tools.sh` automatically stamps each selected tool's version from that tool's own source. Preview/apply output shows the planned version; `--list` shows installed manifest versions when available. In a fresh chat, call the adapter's `get_capabilities` function to read `toolVersion`, which identifies the loaded Python tool independently of wrapper capabilities. Open WebUI receives that version in the source header/manifest when saving. [Open WebUI update handling](https://github.com/open-webui/open-webui/blob/v0.11.4/backend/open_webui/routers/tools.py)
+
+For manual installation/update, export stamped copies first:
+
+```sh
+./scripts/export-tools.sh
+```
+
+Paste the corresponding `build/openwebui/craft_*_tool.py` into the tool editor. This directory is ignored; tracked sources keep their release headers. Copying the tracked file directly shows only the release version. Tool and wrapper fingerprints are independent and need not match. These shell commands need no Python or uv; they use the system's `sha256sum` (Linux) or `shasum` (macOS). No tags or releases are created.
+
 ### Prepare a release locally
 
 Keep reviewed changes under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md). Choose the next version explicitly, then run from the repository root:
@@ -215,7 +240,7 @@ Environment variables override `.env`. Startup rejects missing credentials, plac
 | `WRAPPER_API_TOKEN`             | Required in legacy mode; ignored when experimental profiles are enabled. Nonempty independent bearer token without whitespace.                                                                                                                       |
 | `CRAFT_TIMEOUT_SECONDS`         | `30`; overall upstream deadline and read/write/pool phase limits.                                                                                                                     |
 | `CRAFT_CONNECT_TIMEOUT_SECONDS` | `5`; upstream connection limit, also bounded by the overall deadline.                                                                                                                 |
-| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (23 Space, 17 Multi-Document, 23 Daily Notes; 63 combined in the working tree). `read_only`: their reads (9 Space, 7 Multi-Document, 9 Daily Notes; 25 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
+| `WRAPPER_ENABLED_OPERATIONS`    | `full` or omitted: all operations on configured adapters (25 Space, 17 Multi-Document, 25 Daily Notes; 67 combined in the working tree). `read_only`: their reads (11 Space, 7 Multi-Document, 11 Daily Notes; 29 combined). Also accepts a comma-separated list of exact operation IDs below. Empty/unknown entries and IDs for an unconfigured adapter are errors; duplicates are harmless. |
 | `WRAPPER_PUBLIC_URL`            | Optional non-secret HTTP(S) origin, without a path/query/credentials; sets OpenAPI `servers`. Otherwise consumers use the schema origin.                                              |
 | `WRAPPER_PROFILES_JSON` | Optional experimental profile rules. Omitted preserves legacy mode; see [profile configuration](PROFILES.md). |
 | `WRAPPER_READ_ONLY_TOKEN`, `WRAPPER_PLANNER_TOKEN`, `WRAPPER_MIGRATION_TOKEN` | Separate credentials for enabled profiles; never place them in the rules JSON. |
@@ -242,7 +267,7 @@ Selection takes effect at startup. Recreate the Docker container after changing 
 
 Reads/updates return `200`; creates/insertion return `201`. All responses are JSON, including rendered Markdown.
 
-The unreleased working tree exposes **63 Craft operations** (23 Space, 17 Multi-Document, 23 Daily Notes), or **25 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
+The unreleased working tree exposes **67 Craft operations** (25 Space, 17 Multi-Document, 25 Daily Notes), or **29 reads** combined. Public routes are listed below; profile mounts prepend `/profiles/{profileId}`. Capability discovery is infrastructure and is excluded from these counts. See [experimental profiles](PROFILES.md) for permissions, write context, and setup.
 
 ### Space
 
@@ -250,6 +275,8 @@ All paths below start with `/v1/space`.
 
 | Method and path                                    | Stable operation ID                             | Behavior                                                                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /connection` | `craft_space_get_connection_info` | Authenticated timezone/clock/native app-link template; no upstream credentials. |
+| `GET /tasks/{taskId}` | `craft_space_get_task` | Verified native task; maxDepth=1, fetchMetadata=true by default; missing timestamps remain unknown. |
 | `GET /tasks` | `craft_space_list_tasks` | Required scope active/upcoming/inbox/logbook/document/all; documentId required only for document scope. |
 | `POST /tasks` | `craft_space_add_task` | One `{documentId,markdown,scheduleDate?,deadlineDate?}` task in a verified document; approved root required in profile mode. |
 | `PATCH /tasks/{taskId}` | `craft_space_update_task` | Owning documentId query required; selected Markdown/state/dates only, no clearing or movement. |
@@ -283,6 +310,8 @@ Document **listing** requires `location=daily_notes` with either daily-note date
 Search terms can match inside words: `end` can match `frontend`, for example. Responses can contain multiple hits for one document. The upstream documentation describes a top-20 limit, but live responses exceeded 20 hits and 20 distinct documents; the wrapper preserves the returned results and makes no fixed result-count or completeness guarantee.
 
 Depth `0` reads only the requested root (or collection properties), positive values limit descendants, and `-1` requests all descendants. Finite depth is intentionally incomplete. Structured block reads preserve `contentPreviewMd` and `itemsPreviewMd` when Craft supplies them. Collection blocks can include rows under `items`, with each row's properties and nested `content`; use `list_collection_items` to read rows directly. Craft Markdown tags and link/scope markers are preserved.
+
+Structured block/note reads accept `fetchMetadata=false` by default. Set it to true to request creation/modification timestamps. Recursive responses now preserve native `listStyle` and `taskInfo` state/dates. Task-detail reads verify actual task markers and the echoed ID, default metadata to true, and return 404 for a non-task block; Markdown checkbox text alone is not proof. Metadata omits authors, comments, and navigation links. Missing timestamps are unknown; the wrapper does not infer age from list order. Connection reads return space identity, timezone/time, UTC time, and the verified `craftdocs` block-link template, omitting space names and credentials. Live read-only Space checks passed; Daily variants are mock-tested because the local Daily connection was absent. Recurrence/location enrichment beyond existing task lists, movement, and template creation are not implemented by this checkpoint.
 
 The implemented lists have no documented pagination; the wrapper adds no cursors, limits, or totals. Search is relevance-limited, not exhaustive. Prefer filters and finite depth: incoming bodies are capped at **1 MiB**, upstream responses at **8 MiB**, including streamed data. Oversized results produce an error instead of truncation.
 
@@ -364,6 +393,8 @@ All paths below start with `/v1/daily` and use only `CRAFT_DAILY_BASE_URL`. Craf
 | `POST /collections/{collectionId}/items/{itemId}/content` | `craft_daily_insert_collection_item_markdown` | Append/prepend `{markdown,position?}` to a verified entry body. |
 | `PATCH /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_daily_update_collection_item_block_markdown` | Edit `{markdown}` on one verified body text block. |
 | `DELETE /collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `craft_daily_delete_collection_item_block` | Confirmed leaf-text deletion; entry root and nested collections protected. |
+| `GET /connection` | `craft_daily_get_connection_info` | Authenticated timezone/clock/native app-link template; no upstream credentials. |
+| `GET /tasks/{taskId}` | `craft_daily_get_task` | Verified native task; maxDepth=1, fetchMetadata=true by default; missing timestamps remain unknown. |
 | `GET /tasks` | `craft_daily_list_tasks` | Required `scope=active\|upcoming\|inbox\|logbook`. |
 | `POST /tasks` | `craft_daily_add_task` | Create one native task, defaulting to the inbox. |
 | `PATCH /tasks/{taskId}` | `craft_daily_update_task` | Update selected content, state, schedule, or deadline fields. |
@@ -427,9 +458,9 @@ A write failure after submission can leave its outcome uncertain, including malf
 
 ### Workspace Python tool
 
-Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (23 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (17), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (23). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
+Choose the standalone [Space tool](integrations/openwebui/craft_space_tool.py) (25 Craft operations), [Multi-Document tool](integrations/openwebui/craft_documents_tool.py) (17), or [Daily Notes tool](integrations/openwebui/craft_daily_tool.py) (25). Each also has a capability-discovery function. Each explicitly calls this HTTP wrapper; none connects directly to Craft or requires the wrapper package inside Open WebUI. Their structures follow Open WebUI's [tool development conventions](https://docs.openwebui.com/features/extensibility/plugin/tools/development/).
 
-1. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire contents of the selected tool file into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
+1. Run `./scripts/export-tools.sh`. Open **Workspace → Tools** in Open WebUI and create a tool. Paste the entire corresponding stamped file from `build/openwebui/` into the editor and save it. The metadata declares its HTTPX dependency; Pydantic is supplied by Open WebUI.
 2. Open the tool's **Valves** settings and configure the values below. The token field uses Open WebUI's [password input convention](https://docs.openwebui.com/features/extensibility/plugin/development/valves/); masking the input does not itself encrypt stored values. Restrict tool access to the intended users.
 3. Enable the tool in a chat with a model that supports tool calling. Native function calling is recommended. Ask Space to list folders, Multi-Document to list documents, or Daily Notes to read today’s note. Successful reads return `200`; a missing daily note can return Craft’s `404`.
 
@@ -460,9 +491,9 @@ Nested query/body keys are forwarded without silently removing unknown fields. F
 
 Each result contains `request` (method, path, serialized query), `statusCode`, `requestId`, and the unchanged JSON `response`. This distinguishes a wrapper rejection from a tool connection/decoding failure. Authentication headers and write bodies are not included in request evidence. Wrapper error codes, retry guidance, and uncertain-write flags are preserved. The tool does not follow redirects or retry requests; failed writes after submission are marked uncertain. Results exceeding 9 MiB are rejected rather than truncated.
 
-Each Python tool keeps a static function list: 24 for Space, 18 for Multi-Document, and 24 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
+Each Python tool keeps a static function list: 26 for Space, 18 for Multi-Document, and 26 for Daily Notes, including one capability-discovery function each. Install adapters separately as needed. Global disabled operations return `404`; profile denials return `403` on the server. Native Python tools require a live deletion confirmation dialog; unattended calls fail closed. See [profiles](PROFILES.md) for Valves and document/date write context. Choose this tool or OpenAPI registration for a chat to avoid duplicate operations.
 
-To update manually, replace the installed tool's code in the Open WebUI editor with the current file and save it. Alternatively, use the script below. Rebuilding the wrapper image does not update the separately installed tools. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
+To update manually, run `./scripts/export-tools.sh`, replace the installed tool's code in the Open WebUI editor with its stamped copy in `build/openwebui/`, and save it. Alternatively, use the script below. Rebuilding the wrapper image does not update the separately installed tools. Automated tests cover mocked HTTP calls and calls through an in-process wrapper; the installed Open WebUI UI/model still needs the discovery smoke check above.
 
 #### Update installed Python tools
 
@@ -511,7 +542,7 @@ uvx basedpyright
 
 `pyproject.toml` sets standard type checking for Pyright and basedpyright, using the project's `.venv` and Python 3.12. The editor and CLI use the same configuration; basedpyright's stricter annotation/style rules are not enabled by this preset. `uvx` runs the checker separately from application dependencies. See [basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/).
 
-All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 63 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
+All tests use HTTPX MockTransport, fixture data, or an in-process ASGI app, with no live credentials or requests to Craft. They verify exact mappings for all 67 Craft routes across three adapters, discovery/editing, collection, and native task workflows, validation, auth, deadlines, size bounds, no retries, secret-safe errors/logs, allowlist enforcement, client shutdown, and OpenAPI validity.
 
 Space response fixtures are extracted from the **first response example** for implemented operations in `craft-docs/space-api-docs.md`. Singleton mutation tests narrow example batches; focused error/workflow tests use additional synthetic data. Multi-Document tests use generic synthetic examples of documented responses, including deleted documents and scoped links. Daily Notes tests use generic synthetic fixtures for date-based content, search, collections, and partial task responses. Fixture generation never edits the source docs.
 

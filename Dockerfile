@@ -1,6 +1,10 @@
 FROM ghcr.io/astral-sh/uv:0.12.13 AS uv
 FROM python:3.12-slim
 LABEL org.opencontainers.image.version="0.4.0"
+ARG WRAPPER_BUILD_ID=unknown
+ARG WRAPPER_REVISION=unknown
+LABEL io.craft-wrapper.build-id="$WRAPPER_BUILD_ID" \
+      org.opencontainers.image.revision="$WRAPPER_REVISION"
 
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app

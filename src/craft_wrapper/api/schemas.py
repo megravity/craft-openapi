@@ -107,6 +107,20 @@ class BlockDepth(InputModel):
     )
 
 
+class StructuredBlockRead(BlockDepth):
+    fetchMetadata: bool = Field(
+        default=False,
+        description="Include creation/modification timestamps when Craft supplies them.",
+    )
+
+
+class TaskRead(StructuredBlockRead):
+    fetchMetadata: bool = Field(
+        default=True,
+        description="Request task creation/modification timestamps; missing means unknown.",
+    )
+
+
 class ItemDepth(InputModel):
     maxDepth: int = Field(
         default=0,

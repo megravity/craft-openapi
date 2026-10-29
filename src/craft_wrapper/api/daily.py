@@ -7,6 +7,7 @@ from craft_wrapper.api.daily_schemas import (
     AddTask,
     DailyDateRange,
     DailyMarkdownContent,
+    DailyNoteMarkdownRead,
     DailyNoteRead,
     DailyNoteSelector,
     DailySearchFilters,
@@ -23,6 +24,8 @@ from craft_wrapper.api.schemas import (
     InsertMarkdown,
     ItemDepth,
     MarkdownContent,
+    StructuredBlockRead,
+    TaskRead,
     UpdateCollectionProperties,
     UpdateCollectionTitle,
     UpdateMarkdown,
@@ -38,8 +41,10 @@ from craft_wrapper.craft.models import (
     Block,
     CollectionItem,
     CollectionSchema,
+    ConnectionInfo,
     DeletedResource,
     Items,
+    TaskDetail,
 )
 
 
@@ -59,6 +64,34 @@ def make_router() -> APIRouter:
     )
 
     @router.get(
+        "/connection",
+        operation_id="craft_daily_get_connection_info",
+        response_model=ConnectionInfo,
+        response_model_exclude_none=True,
+        summary="Read connection clock and app-link metadata",
+        description="Read this adapter's space identity, timezone/current time and native app "
+        "block-link template. Authentication required; no credentials or upstream API URL "
+        "are exposed. This is a read, not connection verification at startup or health.",
+    )
+    async def get_connection_info(client: Client):
+        return await client.get_connection_info()
+
+    @router.get(
+        "/tasks/{taskId:path}",
+        operation_id="craft_daily_get_task",
+        response_model=TaskDetail,
+        response_model_exclude_none=True,
+        summary="Read one verified native task and its context",
+        description="Use a task ID from task discovery. Verify native task markers; do not "
+        "infer task state from Markdown checkboxes. Default maxDepth=1 includes direct "
+        "children; -1 requests all descendants. fetchMetadata=true requests creation and "
+        "modification timestamps; missing values remain unknown. State/date information "
+        "and child hierarchy are preserved. Reads never create, complete or move tasks.",
+    )
+    async def get_task(taskId: Identifier, client: Client, filters: Annotated[TaskRead, Query()]):
+        return await client.get_task(taskId, filters.maxDepth, filters.fetchMetadata)
+
+    @router.get(
         "/notes",
         operation_id="craft_daily_get_note",
         response_model=Block,
@@ -72,7 +105,7 @@ def make_router() -> APIRouter:
         "A missing note returns Craft's error; reads do not implicitly insert content.",
     )
     async def get_note(client: Client, filters: Annotated[DailyNoteRead, Query()]):
-        return await client.get_note(filters.date, filters.maxDepth)
+        return await client.get_note(filters.date, filters.maxDepth, filters.fetchMetadata)
 
     @router.get(
         "/notes/markdown",
@@ -86,7 +119,9 @@ def make_router() -> APIRouter:
         "Use get_note for editable block IDs and hierarchy. Craft "
         "tags and scope markers are preserved.",
     )
-    async def read_note_markdown(client: Client, filters: Annotated[DailyNoteRead, Query()]):
+    async def read_note_markdown(
+        client: Client, filters: Annotated[DailyNoteMarkdownRead, Query()]
+    ):
         return DailyMarkdownContent(
             date=filters.date,
             markdown=await client.read_note_markdown(filters.date, filters.maxDepth),
@@ -162,8 +197,10 @@ def make_router() -> APIRouter:
         "read_markdown for reading and summarization. Craft scoped links and "
         "invalid:out_of_scope markers are preserved.",
     )
-    async def get_block(blockId: Identifier, client: Client, depth: Annotated[BlockDepth, Query()]):
-        return await client.get_block(blockId, depth.maxDepth)
+    async def get_block(
+        blockId: Identifier, client: Client, depth: Annotated[StructuredBlockRead, Query()]
+    ):
+        return await client.get_block(blockId, depth.maxDepth, depth.fetchMetadata)
 
     @router.get(
         "/blocks/{blockId}/markdown",

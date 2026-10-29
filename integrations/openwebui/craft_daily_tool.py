@@ -15,6 +15,15 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+_TOOL_VERSION = next(
+    (
+        line.removeprefix("version: ")
+        for line in (__doc__ or "").splitlines()
+        if line.startswith("version: ")
+    ),
+    "unknown",
+)
+
 MAX_RESPONSE_BYTES = 9 * 1024 * 1024
 CONFIRMATION_TIMEOUT_SECONDS = 120
 UI_EVENT_TIMEOUT_SECONDS = 5
@@ -452,7 +461,8 @@ class Tools:
         """
         Read a daily-note root with editable IDs and hierarchy.
         :param parameters: Optional JSON query object with date (default today; YYYY-MM-DD or
-            today/tomorrow/yesterday) and maxDepth (default 1; -1 all descendants).
+            today/tomorrow/yesterday), maxDepth (default 1; -1 all descendants),
+            and fetchMetadata (default false) for creation/modification timestamps.
         """
         return await self._request(
             "GET", "/v1/daily/notes", parameters, operation_id="craft_daily_get_note"
@@ -576,7 +586,8 @@ class Tools:
         Read structured blocks and editable IDs. Finite depth is incomplete; previews are preserved.
         Read collection properties with list_collection_items; standalone item reads may omit them.
         :param blockId: API id from document/block discovery, not a navigation-link ID.
-        :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
+        :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants)
+            and fetchMetadata (default false) for creation/modification timestamps.
             Do not send date write context on this read.
         """
         return await self._request(
@@ -774,9 +785,33 @@ class Tools:
             operation_id="craft_daily_delete_collection_item_block",
         )
 
+    async def craft_daily_get_connection_info(self) -> dict[str, Any]:
+        """Read this connection's timezone, clock and native app-link template; no writes."""
+        return await self._request(
+            "GET", "/v1/daily/connection", operation_id="craft_daily_get_connection_info"
+        )
+
+    async def craft_daily_get_task(
+        self, taskId: str, parameters: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Read one verified native task, its state/dates, child hierarchy and timestamps.
+
+        :param taskId: Native task ID from task discovery, not a document ID.
+        :param parameters: maxDepth (default 1; -1 all descendants), fetchMetadata (default true).
+            Missing state/timestamps are unknown; no document/date write context is needed.
+        """
+        return await self._request(
+            "GET",
+            f"/v1/daily/tasks/{self._id(taskId)}",
+            parameters,
+            operation_id="craft_daily_get_task",
+        )
+
     async def craft_daily_get_capabilities(self) -> dict[str, Any]:
-        """Discover enabled operations and writable targets; visibility is not authorization."""
-        return await self._capabilities(self.valves.model_copy(deep=True))
+        """Report this installed tool version, enabled operations, and writable targets."""
+        result = await self._capabilities(self.valves.model_copy(deep=True))
+        result["toolVersion"] = _TOOL_VERSION
+        return result
 
     async def craft_daily_delete_collection_item(
         self,

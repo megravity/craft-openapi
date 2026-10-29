@@ -15,6 +15,15 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+_TOOL_VERSION = next(
+    (
+        line.removeprefix("version: ")
+        for line in (__doc__ or "").splitlines()
+        if line.startswith("version: ")
+    ),
+    "unknown",
+)
+
 MAX_RESPONSE_BYTES = 9 * 1024 * 1024
 CONFIRMATION_TIMEOUT_SECONDS = 120
 UI_EVENT_TIMEOUT_SECONDS = 5
@@ -484,7 +493,8 @@ class Tools:
         Read structured blocks and editable IDs. Finite depth is incomplete; previews are preserved.
         Read collection properties with list_collection_items; standalone item reads may omit them.
         :param blockId: API id from document/block discovery, not a navigation-link ID.
-        :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants).
+        :param parameters: Optional JSON query object with maxDepth (default 1; -1 all descendants)
+            and fetchMetadata (default false) for creation/modification timestamps.
             Do not send documentId write context on this read.
         """
         return await self._request(
@@ -699,8 +709,10 @@ class Tools:
         )
 
     async def craft_documents_get_capabilities(self) -> dict[str, Any]:
-        """Discover enabled operations and writable targets; visibility is not authorization."""
-        return await self._capabilities(self.valves.model_copy(deep=True))
+        """Report this installed tool version, enabled operations, and writable targets."""
+        result = await self._capabilities(self.valves.model_copy(deep=True))
+        result["toolVersion"] = _TOOL_VERSION
+        return result
 
     async def craft_documents_delete_collection_item(
         self,

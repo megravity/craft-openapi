@@ -48,7 +48,7 @@ def test_read_only_profile_mount_auth_schema_and_capabilities():
             == 404
         )
         schema = client.get("/profiles/read-only/openapi.json").json()
-        assert len([op for path in schema["paths"].values() for op in path.values()]) == 18
+        assert len([op for path in schema["paths"].values() for op in path.values()]) == 22
         assert "/capabilities" not in schema["paths"]
         for secret in settings.secrets:
             assert secret not in json.dumps(schema)

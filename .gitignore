@@ -3,6 +3,7 @@
 !.env.example
 .portainer-webhook
 .openwebui-tools.env
+NATIVE_COLLECTION_INTEGRATION_PLAN.md
 .venv/
 .uv-cache/
 __pycache__/

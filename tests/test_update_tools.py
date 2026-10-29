@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -14,9 +15,12 @@ def updater(tmp_path: Path):
     (repo / "scripts").mkdir(parents=True)
     script = repo / "scripts/update-tools.sh"
     shutil.copyfile(Path(__file__).parents[1] / "scripts/update-tools.sh", script)
+    identity = repo / "scripts/build-id.sh"
+    shutil.copyfile(Path(__file__).parents[1] / "scripts/build-id.sh", identity)
+    identity.chmod(0o755)
     source = repo / "integrations/openwebui/craft_space_tool.py"
     source.parent.mkdir(parents=True)
-    source.write_text('"""version: 0.4.0"""\nclass Tools:\n    pass\n')
+    source.write_text('"""\nversion: 0.4.0\n"""\nclass Tools:\n    pass\n')
     (repo / ".openwebui-tools.env").write_text(
         "OWUI_URL=https://owui.example/prefix\nOWUI_API_TOKEN='synthetic-token-$(id)'\n"
         "OWUI_TIMEOUT_SECONDS=60\n"
@@ -25,7 +29,11 @@ def updater(tmp_path: Path):
         "id": "space_test",
         "name": "Custom test name",
         "content": "# previous source\n",
-        "meta": {"description": "Custom description", "i18n": None},
+        "meta": {
+            "description": "Custom description",
+            "i18n": None,
+            "manifest": {"version": "0.4.0"},
+        },
         "write_access": True,
         "access_grants": [{"principal_id": "example-group", "permission": "read"}],
         "valves": {"WRAPPER_PROFILE": "planner"},
@@ -61,11 +69,17 @@ elif method == 'POST':
     status = int(os.environ.get('TASK_STATUS', '200'))
     if status == 200:
         data.update(payload)
+        version = next(
+            line[9:] for line in payload['content'].splitlines() if line.startswith('version: ')
+        )
+        data['meta']['manifest'] = {{'version': version}}
         data['updated_at'] = 2
         state.write_text(json.dumps(data))
 with Path(os.environ['TASK_EVENTS']).open('a') as f:
     f.write(json.dumps({{'method':method,'payload':payload}})+'\\n')
-response = [{{'id':data['id'],'name':data['name']}}] if args[-1].endswith('/tools/') else data
+response = data
+if args[-1].endswith('/tools/'):
+    response = [{{'id':data['id'],'name':data['name'],'meta':data['meta']}}]
 body = json.dumps(response) if status == 200 else 'private upstream error'
 Path(flag('--output')).write_text(body)
 print(status, end='')
@@ -98,16 +112,26 @@ def test_preview_update_preserves_configuration_and_skips_unchanged(updater):
     run, before, state, events, source = updater
     listing = run("--list")
     assert listing.returncode == 0
-    assert json.loads(listing.stdout) == [{"id": "space_test", "name": "Custom test name"}]
+    assert json.loads(listing.stdout) == [
+        {"id": "space_test", "name": "Custom test name", "version": "0.4.0"}
+    ]
     preview = run("--tool", "space=space_test")
     assert preview.returncode == 0 and "would update" in preview.stdout
     assert json.loads(state.read_text()) == before
     applied = run("--tool", "space=space_test", "--apply")
     assert applied.returncode == 0 and "updated and verified" in applied.stdout
     saved = json.loads(state.read_text())
-    assert saved["content"] == source.read_text()
-    for key in ("name", "meta", "access_grants", "valves"):
+    fingerprint = hashlib.sha256(source.read_bytes()).hexdigest()[:12]
+    stamped = source.read_text().replace("version: 0.4.0\n", f"version: 0.4.0-dev.{fingerprint}\n")
+    assert saved["content"] == stamped
+    assert f"0.4.0-dev.{fingerprint}" in applied.stdout
+    assert "version: 0.4.0\n" in source.read_text()  # Tracked source stays release-compatible.
+    assert saved["meta"]["manifest"]["version"] == f"0.4.0-dev.{fingerprint}"
+    for key in ("description", "i18n"):
+        assert saved["meta"][key] == before["meta"][key]
+    for key in ("name", "access_grants", "valves"):
         assert saved[key] == before[key]
+    assert json.loads(run("--list").stdout)[0]["version"] == f"0.4.0-dev.{fingerprint}"
     unchanged = run("--tool", "space=space_test", "--apply")
     assert unchanged.returncode == 0 and "unchanged" in unchanged.stdout
     calls = [json.loads(line) for line in events.read_text().splitlines()]

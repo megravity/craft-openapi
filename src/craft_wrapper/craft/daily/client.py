@@ -14,8 +14,10 @@ from craft_wrapper.craft.models import (
     Block,
     CollectionItem,
     CollectionSchema,
+    ConnectionInfo,
     DeletedResource,
     Items,
+    TaskDetail,
 )
 from craft_wrapper.craft.transport import CraftTransport
 
@@ -29,10 +31,13 @@ class DailyClient:
     ) -> M:
         return await operations.request_model(self.transport, model, method, path, **kwargs)
 
-    async def get_note(self, date: str = "today", max_depth: int = 1) -> Block:
-        return await self._request(
-            Block, "GET", "blocks", params={"date": date, "maxDepth": max_depth}
-        )
+    async def get_note(
+        self, date: str = "today", max_depth: int = 1, fetch_metadata: bool = False
+    ) -> Block:
+        params: dict[str, str | int | bool] = {"date": date, "maxDepth": max_depth}
+        if fetch_metadata:
+            params["fetchMetadata"] = True
+        return await self._request(Block, "GET", "blocks", params=params)
 
     async def read_note_markdown(self, date: str = "today", max_depth: int = 1) -> str:
         return await self.transport.request(
@@ -64,6 +69,14 @@ class DailyClient:
         return await self._request(
             Items[DailyCollectionSummary], "GET", "collections", params=params
         )
+
+    async def get_task(
+        self, task_id: str, max_depth: int = 1, fetch_metadata: bool = True
+    ) -> TaskDetail:
+        return await operations.get_task(self.transport, task_id, max_depth, fetch_metadata)
+
+    async def get_connection_info(self) -> ConnectionInfo:
+        return await operations.get_connection_info(self.transport)
 
     async def list_tasks(self, scope: str) -> Items[Task]:
         return await self._request(Items[Task], "GET", "tasks", params={"scope": scope})
@@ -103,8 +116,10 @@ class DailyClient:
             task_id,
         )
 
-    async def get_block(self, block_id: str, max_depth: int = 1) -> Block:
-        return await operations.get_block(self.transport, block_id, max_depth)
+    async def get_block(
+        self, block_id: str, max_depth: int = 1, fetch_metadata: bool = False
+    ) -> Block:
+        return await operations.get_block(self.transport, block_id, max_depth, fetch_metadata)
 
     async def read_markdown(self, block_id: str, max_depth: int = 1) -> str:
         return await operations.read_markdown(self.transport, block_id, max_depth)

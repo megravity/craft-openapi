@@ -46,7 +46,7 @@ def test_openapi_valid_and_exact_operation_set(settings, preset):
     validate(spec)
     assert spec["openapi"] == "3.1.0"
     ops = operations(spec)
-    assert len(ops) == 23
+    assert len(ops) == 25
     assert {op["operationId"] for op in ops} == OPERATION_IDS
     assert all(op["security"] == [{"WrapperBearer": []}] for op in ops)
     assert all(op["description"] and op["summary"] for op in ops)
@@ -71,6 +71,8 @@ def test_openapi_valid_and_exact_operation_set(settings, preset):
 READ_ONLY_IDS = {
     "craft_space_list_folders",
     "craft_space_list_tasks",
+    "craft_space_get_task",
+    "craft_space_get_connection_info",
     "craft_space_list_documents",
     "craft_space_search_documents",
     "craft_space_get_block",

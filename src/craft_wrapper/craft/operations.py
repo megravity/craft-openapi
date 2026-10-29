@@ -9,8 +9,10 @@ from craft_wrapper.craft.models import (
     Block,
     CollectionItem,
     CollectionSchema,
+    ConnectionInfo,
     DeletedResource,
     Items,
+    TaskDetail,
 )
 from craft_wrapper.craft.transport import CraftTransport
 
@@ -40,10 +42,33 @@ def parse_model[M: BaseModel](model: type[M], data: Any, *, write: bool = False)
         ) from None
 
 
-async def get_block(transport: CraftTransport, block_id: str, max_depth: int = 1) -> Block:
-    return await request_model(
-        transport, Block, "GET", "blocks", params={"id": block_id, "maxDepth": max_depth}
-    )
+async def get_block(
+    transport: CraftTransport, block_id: str, max_depth: int = 1, fetch_metadata: bool = False
+) -> Block:
+    params: dict[str, str | int | bool] = {"id": block_id, "maxDepth": max_depth}
+    if fetch_metadata:
+        params["fetchMetadata"] = True
+    return await request_model(transport, Block, "GET", "blocks", params=params)
+
+
+async def get_task(
+    transport: CraftTransport, task_id: str, max_depth: int = 1, fetch_metadata: bool = True
+) -> TaskDetail:
+    block = await get_block(transport, task_id, max_depth, fetch_metadata)
+    if block.id != task_id:
+        raise CraftError("craft_upstream_error", "Craft returned an unexpected task ID.")
+    if block.listStyle != "task" or block.type not in {"text", "page"}:
+        if block.taskInfo is not None:
+            raise CraftError("craft_upstream_error", "Craft returned inconsistent task markers.")
+        raise CraftError("craft_not_found", "No native task was found at this block ID.", 404)
+    return TaskDetail.model_validate(block.model_dump())
+
+
+async def get_connection_info(transport: CraftTransport) -> ConnectionInfo:
+    result = await request_model(transport, ConnectionInfo, "GET", "connection")
+    if any(secret in result.model_dump_json() for secret in transport.secrets if secret):
+        raise CraftError("craft_upstream_error", "Craft returned unsafe connection metadata.")
+    return result
 
 
 async def read_markdown(transport: CraftTransport, block_id: str, max_depth: int = 1) -> str:

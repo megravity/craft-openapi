@@ -115,18 +115,22 @@ read_tool() {
 }
 if [ "$list" = true ]; then
     request GET / "$tmp/list"
-    jq '[.[] | {id,name}]' "$tmp/list" 2>/dev/null || fail 'Invalid tool listing.'
+    jq '[.[] | {id,name,version: (.meta.manifest.version // null)}]' "$tmp/list" \
+        2>/dev/null || fail 'Invalid tool listing.'
     exit 0
 fi
 
 # Preflight all selected tools before writing any. Capture the local source for each request.
 while IFS="$(printf '\t')" read -r adapter id; do
-    source="integrations/openwebui/craft_${adapter}_tool.py"
+    source="$tmp/$id.source"
+    "$script_dir/build-id.sh" "$adapter" --stamp > "$source" || fail 'Cannot identify local tool source.'
     read_tool "$tmp/$id.before"
     jq --rawfile content "$source" '{id,name,content:$content,meta}' "$tmp/$id.before" \
         > "$tmp/$id.payload" 2>/dev/null || fail 'Cannot read local tool source.'
 done < "$tmp/selections"
 while IFS="$(printf '\t')" read -r adapter id; do
+    tool_version=$(sed -n 's/^version: //p' "$tmp/$id.source")
+    printf '%s: source %s\n' "$id" "$tool_version"
     if jq -e --slurpfile planned "$tmp/$id.payload" '.content == $planned[0].content' \
         "$tmp/$id.before" >/dev/null; then
         printf '%s: unchanged\n' "$id"
@@ -144,8 +148,10 @@ while IFS="$(printf '\t')" read -r adapter id; do
     mutation_id=$id
     request POST "/id/$id/update" "$tmp/result"
     read_tool "$tmp/$id.after"
-    jq -e --slurpfile planned "$tmp/$id.payload" --slurpfile old "$tmp/$id.before" '
+    jq -e --arg version "$tool_version" --slurpfile planned "$tmp/$id.payload" \
+        --slurpfile old "$tmp/$id.before" '
         .content == $planned[0].content and .name == $old[0].name
+        and .meta.manifest.version == $version
         and (.access_grants | sort) == ($old[0].access_grants | sort)
         and .meta.description == $old[0].meta.description and .meta.i18n == $old[0].meta.i18n
     ' "$tmp/$id.after" >/dev/null || fail "$id: saved source or metadata did not match."

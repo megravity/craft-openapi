@@ -15,6 +15,9 @@ def build_script(tmp_path):
     scripts.mkdir(parents=True)
     script = scripts / "build-image.sh"
     shutil.copyfile(Path(__file__).parents[1] / "scripts/build-image.sh", script)
+    identity = scripts / "build-id.sh"
+    identity.write_text("#!/bin/sh\nprintf '0.4.0-dev.0123456789ab\\n'\n")
+    identity.chmod(0o755)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     docker = fake_bin / "docker"
@@ -70,6 +73,10 @@ def test_build_only_without_webhook(build_script):
         "build",
         "--tag",
         "craft-openapi-wrapper:local",
+        "--build-arg",
+        "WRAPPER_BUILD_ID=0.4.0-dev.0123456789ab",
+        "--build-arg",
+        "WRAPPER_REVISION=unknown",
         str(repo),
     ]
     assert not curl_args.exists()

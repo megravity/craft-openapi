@@ -42,7 +42,11 @@ if [ -n "$webhook_url" ]; then
     fi
 fi
 
-docker build --tag "$image_tag" "$repo_dir"
+build_id=$("$script_dir/build-id.sh" wrapper)
+revision=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || printf 'unknown')
+printf 'Building %s (%s)\n' "$image_tag" "$build_id"
+docker build --tag "$image_tag" --build-arg "WRAPPER_BUILD_ID=$build_id" \
+    --build-arg "WRAPPER_REVISION=$revision" "$repo_dir"
 
 if [ -n "$webhook_url" ]; then
     printf 'Image built. Requesting a Portainer stack update without pulling images...\n'

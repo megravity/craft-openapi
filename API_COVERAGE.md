@@ -2,7 +2,7 @@
 
 ## Baseline and sources
 
-Inventory audited **2026-10-07** against the **unreleased working tree after 0.4.0** (`bd9b08e` release baseline), targeting 0.5.0. This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
+Inventory audited **2026-10-10** against the **unreleased working tree after 0.4.0** (`bd9b08e` release baseline), targeting 0.5.0. This is a repository snapshot, not a live Craft certification or a statement about which adapters a deployed server enables.
 
 | Adapter | Local reference | Reference version | Public documentation |
 |---|---|---|---|
@@ -25,12 +25,12 @@ Count upstream **method/path pairs separately per adapter**. Multiple wrapper ro
 
 | Adapter | Documented pairs | I | P | D | Represented pairs (I + P) | Public wrapper operations |
 |---|---:|---:|---:|---:|---:|---:|
-| Space | 44 | 2 | 16 | 26 | 18 | 23 |
+| Space | 44 | 2 | 17 | 25 | 19 | 25 |
 | Multi-Document | 33 | 1 | 11 | 21 | 12 | 17 |
-| Daily Notes | 36 | 2 | 13 | 21 | 15 | 23 |
-| **Total** | **113** | **5** | **40** | **68** | **45** | **63** |
+| Daily Notes | 36 | 2 | 14 | 20 | 16 | 25 |
+| **Total** | **113** | **5** | **42** | **66** | **47** | **67** |
 
-The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown and Daily Notes date/ID read splits, plus separate property/title and collection-body routes, account for the difference between 45 represented upstream pairs and 63 public operations.
+The endpoint grid has 45 distinct method/path rows: 31 are documented in all three adapters. Its N/A cells are excluded from the 113-pair denominator. Structured/Markdown and Daily Notes date/ID read splits, plus separate property/title and collection-body routes, account for the difference between 47 represented upstream pairs and 67 public operations.
 
 ## Upstream endpoint grid
 
@@ -57,7 +57,7 @@ Each cell is independent. See the public mappings and contract notes below for I
 | `GET /collections/{collectionId}/schema` | P | P | P |
 | `PUT /collections/{collectionId}/schema` | D | D | D |
 | `POST /comments` | D | D | D |
-| `GET /connection` | D | D | D |
+| `GET /connection` | P | D | P |
 | `GET /documents` | P | I | N/A |
 | `POST /documents` | P | N/A | N/A |
 | `DELETE /documents` | D | N/A | N/A |
@@ -94,6 +94,8 @@ Sources: [routes](src/craft_wrapper/api/space.py), [client](src/craft_wrapper/cr
 
 | Operation ID | Wrapper method/path | Upstream method/path | Contract | JSON response model |
 |---|---|---|---|---|
+| `craft_space_get_task` | `GET /v1/space/tasks/{taskId}` | `GET /blocks` | [B1](#b1) | `TaskDetail` |
+| `craft_space_get_connection_info` | `GET /v1/space/connection` | `GET /connection` | [I1](#i1) | `ConnectionInfo` |
 | `craft_space_list_tasks` | `GET /v1/space/tasks` | `GET /tasks` | [T5](#t5) | `Items[SpaceTask]` |
 | `craft_space_add_task` | `POST /v1/space/tasks` | `POST /tasks` | [T6](#t6) | `SpaceTask` |
 | `craft_space_update_task` | `PATCH /v1/space/tasks/{taskId}` | `PUT /tasks` | [T7](#t7) | `SpaceTask` |
@@ -167,6 +169,8 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 | `craft_daily_insert_collection_item_markdown` | `POST /v1/daily/collections/{collectionId}/items/{itemId}/content` | `POST /blocks` | [C9](#c9) | `Items[Block]` |
 | `craft_daily_update_collection_item_block_markdown` | `PATCH /v1/daily/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `PUT /blocks` | [C9](#c9) | `Block` |
 | `craft_daily_delete_collection_item_block` | `DELETE /v1/daily/collections/{collectionId}/items/{itemId}/blocks/{blockId}` | `DELETE /blocks` | [C9](#c9) | `DeletedResource` |
+| `craft_daily_get_task` | `GET /v1/daily/tasks/{taskId}` | `GET /blocks` | [B1](#b1) | `TaskDetail` |
+| `craft_daily_get_connection_info` | `GET /v1/daily/connection` | `GET /connection` | [I1](#i1) | `ConnectionInfo` |
 | `craft_daily_list_tasks` | `GET /v1/daily/tasks` | `GET /tasks` | [T1](#t1) | `Items[Task]` |
 | `craft_daily_add_task` | `POST /v1/daily/tasks` | `POST /tasks` | [T2](#t2) | `Task` |
 | `craft_daily_update_task` | `PATCH /v1/daily/tasks/{taskId}` | `PUT /tasks` | [T3](#t3) | `Task` |
@@ -175,11 +179,15 @@ Sources: [routes](src/craft_wrapper/api/daily.py), [client](src/craft_wrapper/cr
 | `craft_daily_delete_block` | `DELETE /v1/daily/blocks/{blockId}` | `DELETE /blocks` | [B4](#b4) | `DeletedResource` |
 
 
+### I1
+
+**Connection info — P in Space/Daily.** GET /connection exposes space ID/timezone/time/friendlyDate, UTC time, and the native app block-link template through authenticated routes. Space name, credentials, and arbitrary extra fields are omitted. Malformed/unsafe templates fail with sanitized errors. Startup and health still make no upstream calls. Multi-Document connection info remains deferred.
+
 ### B1
 
-**Block reads — P in all adapters.** `Identifier` plus `BlockDepth` supports ID reads; Daily Notes also uses `DailyNoteRead` for date reads, defaulting to today. `maxDepth=1` by default, with `-1` available for all descendants. JSON reads return `Block`; Markdown reads use `Accept: text/markdown` upstream and return `{blockId, markdown}` or `{date, markdown}`. Daily date reads send only `date`, ID reads only `id`.
+**Block reads — P in all adapters.** `Identifier` plus `StructuredBlockRead` supports JSON ID reads; Daily Notes also uses `DailyNoteRead` for date reads, defaulting to today. `maxDepth=1` by default, with `-1` available for all descendants. JSON reads return `Block`; Markdown reads use `Accept: text/markdown` upstream and return `{blockId, markdown}` or `{date, markdown}`. Daily date reads send only `date`, ID reads only `id`.
 
-**Gaps:** no `fetchMetadata` selector or corresponding author/comment/timestamp block metadata. Space's documented date selector is not exposed through the Space adapter; using Daily Notes is not equivalent Space coverage. Multi-Document supports ID targeting only by its reference. Finite depth defaults are intentional, not a missing depth mode.
+**Metadata:** structured reads expose fetchMetadata (default false); task detail defaults it to true, preserves state/hierarchy, and verifies native markers and the echoed ID. Metadata includes only optional createdAt/lastModifiedAt. Live Space shapes/parsing passed read-only probes; other adapters retain mocked/documented coverage. **Gaps:** author/comment metadata is intentionally omitted. Space's documented date selector is not exposed through the Space adapter; using Daily Notes is not equivalent Space coverage. Multi-Document supports ID targeting only by its reference. Finite depth defaults are intentional, not a missing depth mode.
 
 ### B2
 
@@ -327,7 +335,7 @@ The D cells above have no public operation IDs or wrapper request/response model
 | Folder mutations | Verify built-in-location restrictions, nesting, and deletion prerequisites; do not resolve conflicting deletion prose by guessing. |
 | Collection creation/schema replacement | Verify property types and position selectors. Replacement must preserve intended fields/keys; never silently migrate existing data. |
 | Collection views | Implement stored configuration and active-view behavior, not query execution. Verify table/gallery/kanban schemas and last-view deletion restrictions. |
-| Connection info | Verify metadata/timezone/link-template shapes per adapter; never expose connection credentials. |
+| Connection info | Space/Daily reads are implemented with a limited safe projection; Multi-Document remains deferred. |
 | In-document search | Preserve Space `blockId`, Multi-Document `documentId`, and Daily Notes `date` selectors. Verify regex semantics and context limits. |
 | Comments | The references document adding comments, not a general comment CRUD API. |
 | Space task extensions | Document-task creation/rescheduling/completion, canceled/approved leaf-task deletion, and unapproved-root denial passed installed-tool checks. Other Space location selectors, movement, date clearing and batch variants remain deferred. |

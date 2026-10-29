@@ -41,8 +41,10 @@ class DocumentsClient:
             Items[DocumentSearchHit], "GET", "documents/search", params=values
         )
 
-    async def get_block(self, block_id: str, max_depth: int = 1) -> Block:
-        return await operations.get_block(self.transport, block_id, max_depth)
+    async def get_block(
+        self, block_id: str, max_depth: int = 1, fetch_metadata: bool = False
+    ) -> Block:
+        return await operations.get_block(self.transport, block_id, max_depth, fetch_metadata)
 
     async def read_markdown(self, block_id: str, max_depth: int = 1) -> str:
         return await operations.read_markdown(self.transport, block_id, max_depth)

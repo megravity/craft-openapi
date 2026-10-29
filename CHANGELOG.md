@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Identify local wrapper images and installed Open WebUI tools with deterministic development source fingerprints. Stamp tool updates/exports without changing release metadata, report installed tool versions in capability results, and label images with their build ID and Git revision.
+
+- Add authenticated Space/Daily task-detail and connection-info reads, creation/modification metadata selectors, and preserved native task state/hierarchy. Verify task markers and IDs, omit author/navigation metadata and connection secrets, and include matching standalone tool functions. Live Space checks used reads only; Daily remains mock-verified.
+
 - Replace the Python/uv tool updater with a standalone curl/jq shell script, keeping saved credentials, explicit selection, previews, configuration preservation, and verified updates.
 
 - Load Open WebUI updater credentials automatically from an ignored repository-root `.openwebui-tools.env`, with environment overrides and a one-time setup example; remove repeated token-entry instructions.

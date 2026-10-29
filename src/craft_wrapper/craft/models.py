@@ -1,6 +1,8 @@
+from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CraftModel(BaseModel):
@@ -12,6 +14,28 @@ class DeletedResource(CraftModel):
     id: str
 
 
+class TaskInfo(CraftModel):
+    state: str | None = None
+    scheduleDate: str | None = None
+    deadlineDate: str | None = None
+
+
+class BlockMetadata(CraftModel):
+    createdAt: str | None = Field(
+        default=None,
+        description="Upstream creation timestamp; absent means unknown.",
+        json_schema_extra={"format": "date-time"},
+    )
+    lastModifiedAt: str | None = None
+
+    @field_validator("createdAt", "lastModifiedAt")
+    @classmethod
+    def timestamp(cls, value: str | None) -> str | None:
+        if value is not None and datetime.fromisoformat(value).tzinfo is None:
+            raise ValueError("Expected an offset-aware creation/modification timestamp")
+        return value
+
+
 class Block(CraftModel):
     id: str
     type: str
@@ -20,6 +44,9 @@ class Block(CraftModel):
     font: str | None = None
     url: str | None = None
     altText: str | None = None
+    listStyle: str | None = None
+    taskInfo: TaskInfo | None = None
+    metadata: BlockMetadata | None = None
     content: list["Block"] | None = None
     items: list["CollectionItem"] | None = Field(
         default=None, description="Collection rows returned within the requested depth."
@@ -54,6 +81,44 @@ class CollectionItem(CraftModel):
 
 
 Block.model_rebuild()
+
+
+class TaskDetail(Block):
+    """One verified native task, with the requested depth of child blocks."""
+
+
+class ConnectionSpace(CraftModel):
+    id: str = Field(min_length=1)
+    timezone: str = Field(min_length=1)
+    time: str = Field(min_length=1)
+    friendlyDate: str | None = None
+
+
+class ConnectionUTC(CraftModel):
+    time: str = Field(min_length=1)
+
+
+class AppLinkTemplates(CraftModel):
+    app: str = Field(min_length=1, description="Native Craft app URL template, not an API URL.")
+
+    @field_validator("app")
+    @classmethod
+    def native_app_template(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "craftdocs"
+            or parsed.netloc != "open"
+            or "{blockId}" not in value
+            or any(char.isspace() or ord(char) < 32 for char in value)
+        ):
+            raise ValueError("Expected a Craft native app block-link template")
+        return value
+
+
+class ConnectionInfo(CraftModel):
+    space: ConnectionSpace
+    utc: ConnectionUTC
+    urlTemplates: AppLinkTemplates
 
 
 class Items[T](CraftModel):
@@ -104,9 +169,3 @@ class CollectionSchema(CraftModel):
         default=None, description="Title-property metadata, when supplied by Craft."
     )
     properties: list[CollectionProperty]
-
-
-class TaskInfo(CraftModel):
-    state: str | None = None
-    scheduleDate: str | None = None
-    deadlineDate: str | None = None

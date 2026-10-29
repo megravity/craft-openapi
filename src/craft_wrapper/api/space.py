@@ -20,12 +20,21 @@ from craft_wrapper.api.schemas import (
     SearchFilters,
     SpaceTaskFilters,
     SpaceTaskWriteContext,
+    StructuredBlockRead,
+    TaskRead,
     UpdateCollectionProperties,
     UpdateCollectionTitle,
     UpdateMarkdown,
     UpdateTask,
 )
-from craft_wrapper.craft.models import Block, CollectionItem, DeletedResource, Items
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
+    ConnectionInfo,
+    DeletedResource,
+    Items,
+    TaskDetail,
+)
 from craft_wrapper.craft.space.client import SpaceClient
 from craft_wrapper.craft.space.models import (
     CollectionSchema,
@@ -51,6 +60,34 @@ def make_router() -> APIRouter:
         dependencies=[Depends(require_token)],
         responses=ERROR_RESPONSES,
     )
+
+    @router.get(
+        "/connection",
+        operation_id="craft_space_get_connection_info",
+        response_model=ConnectionInfo,
+        response_model_exclude_none=True,
+        summary="Read connection clock and app-link metadata",
+        description="Read this adapter's space identity, timezone/current time and native app "
+        "block-link template. Authentication required; no credentials or upstream API URL "
+        "are exposed. This is a read, not connection verification at startup or health.",
+    )
+    async def get_connection_info(client: Client):
+        return await client.get_connection_info()
+
+    @router.get(
+        "/tasks/{taskId:path}",
+        operation_id="craft_space_get_task",
+        response_model=TaskDetail,
+        response_model_exclude_none=True,
+        summary="Read one verified native task and its context",
+        description="Use a task ID from task discovery. Verify native task markers; do not "
+        "infer task state from Markdown checkboxes. Default maxDepth=1 includes direct "
+        "children; -1 requests all descendants. fetchMetadata=true requests creation and "
+        "modification timestamps; missing values remain unknown. State/date information "
+        "and child hierarchy are preserved. Reads never create, complete or move tasks.",
+    )
+    async def get_task(taskId: Identifier, client: Client, filters: Annotated[TaskRead, Query()]):
+        return await client.get_task(taskId, filters.maxDepth, filters.fetchMetadata)
 
     @router.get(
         "/tasks",
@@ -208,8 +245,10 @@ def make_router() -> APIRouter:
         "Depth-limited reads preserve contentPreviewMd and itemsPreviewMd when supplied. Prefer "
         "read_markdown for reading and summarization. Craft links are preserved.",
     )
-    async def get_block(blockId: Identifier, client: Client, depth: Annotated[BlockDepth, Query()]):
-        return await client.get_block(blockId, depth.maxDepth)
+    async def get_block(
+        blockId: Identifier, client: Client, depth: Annotated[StructuredBlockRead, Query()]
+    ):
+        return await client.get_block(blockId, depth.maxDepth, depth.fetchMetadata)
 
     @router.get(
         "/blocks/{blockId}/markdown",

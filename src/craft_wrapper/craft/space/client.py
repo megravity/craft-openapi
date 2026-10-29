@@ -5,7 +5,14 @@ from pydantic import BaseModel
 
 from craft_wrapper.craft import operations
 from craft_wrapper.craft.errors import CraftError
-from craft_wrapper.craft.models import Block, CollectionItem, DeletedResource, Items
+from craft_wrapper.craft.models import (
+    Block,
+    CollectionItem,
+    ConnectionInfo,
+    DeletedResource,
+    Items,
+    TaskDetail,
+)
 from craft_wrapper.craft.space.models import (
     CollectionSchema,
     CollectionSummary,
@@ -28,6 +35,14 @@ class SpaceClient:
 
     async def list_folders(self) -> Items[Folder]:
         return await self._request(Items[Folder], "GET", "folders")
+
+    async def get_task(
+        self, task_id: str, max_depth: int = 1, fetch_metadata: bool = True
+    ) -> TaskDetail:
+        return await operations.get_task(self.transport, task_id, max_depth, fetch_metadata)
+
+    async def get_connection_info(self) -> ConnectionInfo:
+        return await operations.get_connection_info(self.transport)
 
     async def list_tasks(
         self,
@@ -109,8 +124,10 @@ class SpaceClient:
         result = await self._request(Items[DocumentSummary], "POST", "documents", body=body)
         return self._single(result)
 
-    async def get_block(self, block_id: str, max_depth: int = 1) -> Block:
-        return await operations.get_block(self.transport, block_id, max_depth)
+    async def get_block(
+        self, block_id: str, max_depth: int = 1, fetch_metadata: bool = False
+    ) -> Block:
+        return await operations.get_block(self.transport, block_id, max_depth, fetch_metadata)
 
     async def read_markdown(self, block_id: str, max_depth: int = 1) -> str:
         return await operations.read_markdown(self.transport, block_id, max_depth)

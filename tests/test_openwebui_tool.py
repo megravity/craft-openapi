@@ -446,7 +446,7 @@ def test_private_request_logging_suppressed_and_filter_removed(
 def test_expected_public_tools_and_nested_argument_schema(tool):
     methods = inspect.getmembers(type(tool), predicate=inspect.iscoroutinefunction)
     public = [(name, method) for name, method in methods if not name.startswith("_")]
-    assert len(public) == {"space": 24, "documents": 18, "daily": 24}[adapter(tool)]
+    assert len(public) == {"space": 26, "documents": 18, "daily": 26}[adapter(tool)]
     assert all(name.startswith("craft_" + adapter(tool) + "_") for name, _ in public)
     method = operation(tool, "list_documents")
     hints = get_type_hints(method)
@@ -759,3 +759,30 @@ def test_daily_date_content_and_task_workflows(tool_module, tool, settings, monk
 
     asyncio.run(run())
     assert len(calls) == 9
+
+
+def test_native_read_helpers_forward_exact_request_and_preserve_evidence(
+    tool_module, tool, monkeypatch
+):
+    if adapter(tool) == "documents":
+        pytest.skip("Multi-Document does not expose native task/connection helpers")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "GET"
+        return httpx.Response(
+            200, json={"result": "synthetic"}, headers={"X-Request-Id": "read-proof"}
+        )
+
+    connect_mock(monkeypatch, tool_module, handler)
+    result = asyncio.run(
+        operation(tool, "get_task")("opaque /?#", {"maxDepth": -1, "fetchMetadata": True})
+    )
+    assert calls[-1].url.raw_path == (
+        f"/v1/{adapter(tool)}/tasks/opaque%20%2F%3F%23?maxDepth=-1&fetchMetadata=true".encode()
+    )
+    assert result["statusCode"] == 200 and result["requestId"] == "read-proof"
+    result = asyncio.run(operation(tool, "get_connection_info")())
+    assert calls[-1].url.path == f"/v1/{adapter(tool)}/connection"
+    assert not calls[-1].url.params and result["response"] == {"result": "synthetic"}
